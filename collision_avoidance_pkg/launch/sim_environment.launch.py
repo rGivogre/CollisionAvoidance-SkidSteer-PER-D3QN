@@ -17,11 +17,8 @@ def generate_launch_description():
     pkg_collision_avoidance = get_package_share_directory('collision_avoidance_pkg')
     pkg_turtlebot3_gazebo = get_package_share_directory('turtlebot3_gazebo')
 
-    # Define the exact path to your custom training world (the .world file)
-    # Uncomment the line below and replace 'map2.world' with the name of your world file when we will have a custom one
+    # Define the exact path to our custom training world (the .world file)
     world_file = os.path.join(pkg_collision_avoidance, 'worlds', 'map2.world')
-
-    # world_file = os.path.join(pkg_turtlebot3_gazebo, 'worlds', 'turtlebot3_world.world') # IGNORE - This is the default world, we will replace it with our custom one
 
     # Command to start 'gzserver': the core physics engine of Gazebo
     # We pass our custom 'world_file' as an argument so it loads our maze
@@ -39,9 +36,6 @@ def generate_launch_description():
             os.path.join(pkg_gazebo_ros, 'launch', 'gzclient.launch.py')
         )
     )
-
-    #ros2 launch collision_avoidance_pkg sim_environment.launch.py
-
 
     # Define the path to the 3D model (SDF file) of the TurtleBot3 Burger
     urdf_file = os.path.join(pkg_turtlebot3_gazebo, 'models', 'turtlebot3_burger', 'model.sdf')

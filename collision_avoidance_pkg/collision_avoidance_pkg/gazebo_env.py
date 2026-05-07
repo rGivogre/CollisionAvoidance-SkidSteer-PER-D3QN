@@ -8,10 +8,10 @@ class GazeboEnv(Node):
     def __init__(self):
         super().__init__('gazebo_env_node')
         
-        # Publisher to move the robot
+        # Publisher on /cmd_vel to move the robot
         self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         
-        # Subscriber to read the LiDAR scan
+        # Subscriber on /scan to read the LiDAR scan
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         
         # Internal state variables
