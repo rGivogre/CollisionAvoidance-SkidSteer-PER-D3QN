@@ -2,41 +2,41 @@ import rclpy
 import random
 import time
 from geometry_msgs.msg import Twist
-from .gazebo_env import GazeboEnv # Import the environment
+from .gazebo_env import GazeboEnv   # Import the environment
 
 def main(args=None):
     rclpy.init(args=args)
-    
+
     # Initialize our environment
     env = GazeboEnv()
     
     print("Starting Random Agent test! Press CTRL+C to stop.")
     time.sleep(2) # Wait 2 seconds for Gazebo to stabilize
-    
-    done = False
-    total_reward = 0
-    
+
     try:
-        while not done:
-            # Choose a random action from 0 to 10
-            action = random.randint(0, 10)
+        epochs = 5 # Let's test 5 episodes
+        for epoch in range(1, epochs + 1):
+            state = env.reset() # Start of the episode
+            done = False
+            total_reward = 0
             
-            # Execute the step in the environment
-            state, reward, done = env.step(action)
-            total_reward += reward
+            print(f"--- Starting Epoch {epoch} ---")
             
-            print(f"Action: {action} | Reward: {reward} | State[0]: {state[0]:.2f}m")
-            
-            # If it crashed, stop the robot
-            if done:
-                print(f"BOOM! Collision detected. Total reward: {total_reward}")
+            while not done:
+                action = random.randint(0, 10)
+
+                # Execute the step in the environment
+                state, reward, done = env.step(action)
+                total_reward += reward
+                print(f"Action: {action} | Reward: {reward} | State[0]: {state[0]:.2f}m")
                 
-                # Send a null action to stop the wheels
-                stop_cmd = Twist()
-                env.cmd_vel_pub.publish(stop_cmd)
-                
+                if done:
+                    stop_cmd = Twist()
+                    env.cmd_vel_pub.publish(stop_cmd)
+                    print(f"BOOM! Collision. Epoch {epoch} ended. Total reward: {total_reward}")
+                    
     except KeyboardInterrupt:
-        pass
+        print("Interrupted by user.")
     
     env.destroy_node()
     rclpy.shutdown()

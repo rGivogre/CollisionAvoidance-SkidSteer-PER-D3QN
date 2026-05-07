@@ -2,7 +2,9 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from std_srvs.srv import Empty
 import numpy as np
+import time
 
 class GazeboEnv(Node):
     def __init__(self):
@@ -13,6 +15,11 @@ class GazeboEnv(Node):
         
         # Subscriber on /scan to read the LiDAR scan
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+
+        # Service client to reset the simulation
+        self.reset_sim_client = self.create_client(Empty, '/reset_simulation')
+        while not self.reset_sim_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Waiting for /reset_simulation service...')
         
         # Internal state variables
         self.state = np.zeros(50) # Initialize the 50-element array
@@ -20,15 +27,15 @@ class GazeboEnv(Node):
         self.min_distance = 0.20  # If an obstacle is closer than 20 cm, it's a collision
 
     def scan_callback(self, msg):
-        """This function processes LiDAR data every time it arrives."""
+        """Processes LiDAR data every time it arrives."""
         # Convert measurements to a numpy array
         ranges = np.array(msg.ranges)
         
-        # The laser sometimes returns "infinite" if it sees nothing. Limit to 3.5 meters.
-        ranges[np.isinf(ranges)] = 3.5
-        ranges[np.isnan(ranges)] = 3.5
+        # The laser sometimes returns "infinite" if it sees nothing. Limit to 5 meters.
+        ranges[np.isinf(ranges)] = 5.0
+        ranges[np.isnan(ranges)] = 5.0
         
-        # The paper extracts exactly 50 uniformly distributed measurements
+        # Extract exactly 50 uniformly distributed measurements
         # np.linspace selects 50 evenly spaced indices from the array's total length
         indices = np.linspace(0, len(ranges) - 1, 50, dtype=int)
         self.state = ranges[indices]
@@ -40,12 +47,12 @@ class GazeboEnv(Node):
             self.collision = False
 
     def step(self, action):
-        """This function receives the action (0-10), moves the robot and calculates the reward."""
+        """Receives the action (0-10), moves the robot and calculates the reward."""
         
         # Move the robot using the formula from the paper
         vel_cmd = Twist()
         vel_cmd.linear.x = 0.15  # Fixed forward speed (e.g. 0.15 m/s)
-        vel_cmd.angular.z = -0.8 + (0.16 * action) # The action ranges from 0 to 10
+        vel_cmd.angular.z = -0.8 + (0.16 * action)
         
         self.cmd_vel_pub.publish(vel_cmd)
         
@@ -61,4 +68,22 @@ class GazeboEnv(Node):
             reward = 5
             done = False
             
-        return self.state, reward, done
+        return self.state.copy(), reward, done
+    
+    def reset(self):
+        """Resets the robot and the simulation to start a new episode."""
+        # Stop the robot's movement
+        stop_cmd = Twist()
+        self.cmd_vel_pub.publish(stop_cmd)
+        rclpy.spin_once(self, timeout_sec=0.1)
+        
+        # Call the Gazebo reset service
+        req = Empty.Request()
+        future = self.reset_sim_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        
+        # Wait briefly for Gazebo physics to settle and LiDAR to update
+        rclpy.spin_once(self, timeout_sec=0.1)
+        
+        self.collision = False
+        return self.state.copy()
