@@ -19,6 +19,19 @@ Always remember to build the package from the root of your ROS 2 workspace (e.g.
 cd ~/ros_project_ws
 colcon build
 ```
+### Pro Tip for Development: `--symlink-install`
+
+During development, it is highly recommended to use the `--symlink-install` flag. This creates a shortcut (symlink) to your Python scripts instead of copying them. That way, any changes you make to your Python code (or `.launch.py` and `.world` files) are applied immediately upon saving, without needing to run `colcon build` again!
+
+To switch to this method, you should first clean your workspace by deleting the old static build files, and then build with the flag:
+
+```bash
+cd ~/ros_project_ws
+rm -rf build/ install/ log/
+colcon build --symlink-install
+```
+
+*(Note: You will still need to run `colcon build --symlink-install` if you create completely new files or modify the `setup.py` file).*
 
 ## How to Run
 
