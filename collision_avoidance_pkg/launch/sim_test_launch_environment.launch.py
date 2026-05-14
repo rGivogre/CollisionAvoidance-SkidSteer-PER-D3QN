@@ -1,7 +1,8 @@
 import os
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -13,12 +14,17 @@ def generate_launch_description():
 
     # Retrieve the absolute paths to the required ROS 2 packages
     # This prevents hardcoding paths, making the code work on any computer
+    # Paths
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
     pkg_collision_avoidance = get_package_share_directory('collision_avoidance_pkg')
-    pkg_turtlebot3_gazebo = get_package_share_directory('turtlebot3_gazebo')
+    pkg_husky_description = get_package_share_directory('husky_description')
+
+    xacro_file = os.path.join(pkg_husky_description, 'urdf', 'husky.urdf.xacro')
+    # This renders the Xacro into a XML string
+    robot_description_xml = xacro.process_file(xacro_file).toxml()
 
     # Define the exact path to our custom training world (the .world file)
-    world_file = os.path.join(pkg_collision_avoidance, 'worlds', 'map2_resized.world')
+    world_file = os.path.join(pkg_collision_avoidance, 'worlds', 'map2.world')
 
     # Command to start 'gzserver': the core physics engine of Gazebo
     # We pass our custom 'world_file' as an argument so it loads our maze
@@ -38,27 +44,34 @@ def generate_launch_description():
     )
 
     # Define the path to the 3D model (SDF file) of the TurtleBot3 Burger
-    urdf_file = os.path.join(pkg_turtlebot3_gazebo, 'models', 'turtlebot3_burger', 'model.sdf')
+    # urdf_file = os.path.join(pkg_turtlebot3_gazebo, 'models', 'turtlebot3_burger', 'model.sdf')
     
-    # Node to spawn the robot entity inside the running Gazebo simulation
-    spawn_turtlebot_cmd = Node(
+# 4. Robot State Publisher (Required for Husky)
+    node_robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[{'robot_description': robot_description_xml, 'use_sim_time': True}]
+    )
+
+    # 5. Spawn the Entity
+    # We use '-topic' because the state publisher is now "streaming" the robot model
+    spawn_husky_cmd = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
         arguments=[
-            '-entity', 'turtlebot3_burger',
-            '-file', urdf_file,
-            '-x', '-2.0',  # Initial X coordinate in the world
-            '-y', '0.5',  # Initial Y coordinate in the world
-            '-z', '0.01'  # Spawn slightly above ground to prevent physics glitches
+            '-entity', 'husky',
+            '-topic', 'robot_description',
+            '-x', '-2.0',
+            '-y', '0.5',
+            '-z', '0.2' # Spawning slightly higher because Husky is taller
         ],
         output='screen',
     )
 
-    # Return the compiled list of actions to execute simultaneously
     return LaunchDescription([
         gzserver_cmd,
         gzclient_cmd,
-        spawn_turtlebot_cmd
+        node_robot_state_publisher,
+        spawn_husky_cmd
     ])
-
-    
