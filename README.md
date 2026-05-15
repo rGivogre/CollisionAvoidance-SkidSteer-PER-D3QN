@@ -17,7 +17,7 @@ Always remember to build the package from the root of your ROS 2 workspace (e.g.
 
 ```bash
 cd ~/ros_project_ws
-colcon build
+colcon build --symlink-install
 ```
 ### Pro Tip for Development: `--symlink-install`
 
