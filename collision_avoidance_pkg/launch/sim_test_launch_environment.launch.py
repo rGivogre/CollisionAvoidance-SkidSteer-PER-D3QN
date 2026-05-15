@@ -1,33 +1,27 @@
 import os
-import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
 def generate_launch_description():
     """
-    This function generates the launch description for the simulation environment.
-    It tells ROS 2 exactly which nodes and background processes to start.
+    Modified launch file to spawn the Skidbot (4-wheel skid steer) 
+    instead of the TurtleBot3.
     """
 
-    # Retrieve the absolute paths to the required ROS 2 packages
-    # This prevents hardcoding paths, making the code work on any computer
-    # Paths
+    # 1. Retrieve the absolute paths to the required ROS 2 packages
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
     pkg_collision_avoidance = get_package_share_directory('collision_avoidance_pkg')
-    pkg_husky_description = get_package_share_directory('husky_description')
+    
+    # Change: Point to your new skid_bot package
+    pkg_skid_bot = get_package_share_directory('skid_bot')
 
-    xacro_file = os.path.join(pkg_husky_description, 'urdf', 'husky.urdf.xacro')
-    # This renders the Xacro into a XML string
-    robot_description_xml = xacro.process_file(xacro_file).toxml()
+    # 2. Define the path to your custom world
+    world_file = os.path.join(pkg_collision_avoidance, 'worlds', 'map2_resized.world')
 
-    # Define the exact path to our custom training world (the .world file)
-    world_file = os.path.join(pkg_collision_avoidance, 'worlds', 'map2.world')
-
-    # Command to start 'gzserver': the core physics engine of Gazebo
-    # We pass our custom 'world_file' as an argument so it loads our maze
+    # 3. Command to start 'gzserver'
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_gazebo_ros, 'launch', 'gzserver.launch.py')
@@ -35,43 +29,50 @@ def generate_launch_description():
         launch_arguments={'world': world_file}.items()
     )
 
-    # Command to start 'gzclient': the Graphical User Interface (GUI) of Gazebo
-    # This allows us to visually see the robot and the environment (optional but helpful for debugging)
+    # 4. Command to start 'gzclient'
     gzclient_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_gazebo_ros, 'launch', 'gzclient.launch.py')
         )
     )
 
-    # Define the path to the 3D model (SDF file) of the TurtleBot3 Burger
-    # urdf_file = os.path.join(pkg_turtlebot3_gazebo, 'models', 'turtlebot3_burger', 'model.sdf')
+    # 5. Define the path to the Skidbot model
+    # Most community models use URDF/Xacro. 
+    # The skid_bot repo typically stores it in 'urdf/skid_bot.urdf'
+    urdf_file = os.path.join(pkg_skid_bot, 'description', 'robot.urdf.xacro')
     
-# 4. Robot State Publisher (Required for Husky)
-    node_robot_state_publisher = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        output='screen',
-        parameters=[{'robot_description': robot_description_xml, 'use_sim_time': True}]
-    )
+    # Note: If the file is just a .urdf and not .xacro, use that path.
+    # If it is a .xacro, Gazebo might need it processed, but spawn_entity 
+    # can often handle the processed XML from the robot_state_publisher.
+    # For now, we point to the description file.
 
-    # 5. Spawn the Entity
-    # We use '-topic' because the state publisher is now "streaming" the robot model
-    spawn_husky_cmd = Node(
+    # 6. Node to spawn the skid_bot entity
+    spawn_skidbot_cmd = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
         arguments=[
-            '-entity', 'husky',
-            '-topic', 'robot_description',
+            '-entity', 'skid_bot',     # Unique name for the entity
+            '-topic', 'robot_description', # Spawns the robot from the robot_description topic
             '-x', '-2.0',
             '-y', '0.5',
-            '-z', '0.2' # Spawning slightly higher because Husky is taller
+            '-z', '0.05'               # Slightly higher to ensure wheels touch ground correctly
         ],
         output='screen',
     )
 
+    # 7. Robot State Publisher (Required for Skidbot to load the URDF properly)
+    # This node converts Xacro/URDF into a format Gazebo and RViz understand
+    robot_state_publisher = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_skid_bot, 'launch', 'rsp.launch.py')
+        ),
+        launch_arguments={'use_sim_time': 'true'}.items()
+    )
+
+    # Return the compiled list
     return LaunchDescription([
         gzserver_cmd,
         gzclient_cmd,
-        node_robot_state_publisher,
-        spawn_husky_cmd
+        robot_state_publisher, # Adds the robot description to the ROS ecosystem
+        spawn_skidbot_cmd      # Spawns the robot using that description
     ])
