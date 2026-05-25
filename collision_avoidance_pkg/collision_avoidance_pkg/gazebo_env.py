@@ -2,9 +2,11 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
-from std_srvs.srv import Empty
+from gazebo_msgs.srv import SetEntityState
 import numpy as np
 import time
+import random
+import math
 
 class GazeboEnv(Node):
     def __init__(self):
@@ -16,16 +18,29 @@ class GazeboEnv(Node):
         # Subscriber on /scan to read the LiDAR scan
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
 
-        # Service client to reset the simulation
-        self.reset_sim_client = self.create_client(Empty, '/reset_simulation')
-        while not self.reset_sim_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Waiting for /reset_simulation service...')
+        # Service client to teleport the robot (SetEntityState)
+        self.set_state_client = self.create_client(SetEntityState, '/gazebo/set_entity_state')
+        while not self.set_state_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Waiting for /gazebo/set_entity_state service...')
         
         # Internal state variables
         self.state = np.zeros(50) # Initialize the 50-element array
         self.collision = False
         self.min_distance = 0.20  # If an obstacle is closer than 20 cm, it's a collision
 
+        # TODO: Ask if is better to do normalization here or in the agent.
+
+        # TODO: Change this approach to one with rectangular safe zones instead of points. So that is more general for training.
+        # (X, Y, Yaw in radiants)
+        self.safe_spawn_points = [
+            (-2.0, 0.5, 0.0),        
+            (1.0, 1.0, 1.57),        
+            (-1.5, -1.5, 3.14),      
+            (1.5, -0.5, -1.57),
+            (0.0, -2.0, 0.78),
+            (2.0, 0.0, -0.78)
+        ]
+    
     def scan_callback(self, msg):
         """Processes LiDAR data every time it arrives."""
         # Convert measurements to a numpy array
@@ -71,18 +86,35 @@ class GazeboEnv(Node):
         return self.state.copy(), reward, done
     
     def reset(self):
-        """Resets the robot and the simulation to start a new episode."""
+        """Resets the robot teleporting it to a random safe location and returns the initial state."""
         # Stop the robot's movement
         stop_cmd = Twist()
         self.cmd_vel_pub.publish(stop_cmd)
         rclpy.spin_once(self, timeout_sec=0.1)
+
+        #TODO: Change this approach to one with rectangular safe zones instead of points.
+        # Choose a random spawn point from the predefined safe locations
+        x, y, yaw = random.choice(self.safe_spawn_points)
         
-        # Call the Gazebo reset service
-        req = Empty.Request()
-        future = self.reset_sim_client.call_async(req)
+        # Create the request to teleport the robot
+        req = SetEntityState.Request()
+        req.state.name = 'turtlebot3_burger'
+        req.state.reference_frame = 'world'
+        
+        # Set the robot's position and orientation
+        req.state.pose.position.x = float(x)
+        req.state.pose.position.y = float(y)
+        req.state.pose.position.z = 0.01    # Slightly above the ground to avoid spawning issues
+        req.state.pose.orientation.x = 0.0
+        req.state.pose.orientation.y = 0.0
+        req.state.pose.orientation.z = math.sin(yaw / 2.0)
+        req.state.pose.orientation.w = math.cos(yaw / 2.0)
+        
+        # Call the service to teleport the robot
+        future = self.set_state_client.call_async(req)
         rclpy.spin_until_future_complete(self, future)
-        
-        # Wait briefly for Gazebo physics to settle and LiDAR to update
+
+        time.sleep(0.2)
         rclpy.spin_once(self, timeout_sec=0.1)
         
         self.collision = False
