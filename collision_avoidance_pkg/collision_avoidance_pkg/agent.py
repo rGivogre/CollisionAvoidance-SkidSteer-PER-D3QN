@@ -11,7 +11,7 @@ ACTION_SIZE = 11
 HIDDEN_NEURONS = 300
 BATCH_SIZE = 64
 GAMMA = 0.99
-LEARNING_RATE = 0.00025
+LEARNING_RATE = 2.5e-4
 MIN_EPSILON = 0.05
 DECAY_RATE_BETA = 0.999  
 TARGET_UPDATE_FREQ = 1000 # Steps between target network updates
@@ -27,49 +27,43 @@ class QNetwork(nn.Module):
         self.fc2 = nn.Linear(HIDDEN_NEURONS, HIDDEN_NEURONS)
         self.fc3 = nn.Linear(HIDDEN_NEURONS, action_size)
 
-    def forward(self, x):
+    def forward(self, x):               # Forward pass through the network
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         return self.fc3(x)
 
+
 class DDQNAgent:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+        self.train_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         # Initialize Policy Network and Target Network
-        self.policy_net = QNetwork(STATE_SIZE, ACTION_SIZE).to(self.device)
-        self.target_net = QNetwork(STATE_SIZE, ACTION_SIZE).to(self.device)
+        self.policy_net = QNetwork(STATE_SIZE, ACTION_SIZE).to(self.train_device)
+        self.target_net = QNetwork(STATE_SIZE, ACTION_SIZE).to(self.train_device)
         
-        # Copy weights from policy to target
-        self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.target_net.eval() # Target network is only used for inference
+        self.target_net.load_state_dict(self.policy_net.state_dict())   # Copy weights from policy network to target network
+        self.target_net.eval()  # Target network is only used for inference, it is not trained during the optimization step
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
-        
-        # Experience Replay Memory
-        self.memory = deque(maxlen=100000)
+    
+        self.memory = deque(maxlen=100000)  # Experience Replay Memory
         
         # Epsilon-greedy parameters
         self.epsilon = 1.0
         self.step_count = 0
 
     def get_action(self, state):
-        """
-        Selects an action using the epsilon-greedy policy.
-        """
+        """ Selects an action using the epsilon-greedy policy. """
         if np.random.rand() <= self.epsilon:
             # Exploration: choose random action
             return random.randrange(ACTION_SIZE)
             
-        # Exploitation: choose action with max Q-value
-        # Note: We can optionally normalize the state here if needed in the future
-        # e.g., state_tensor = torch.FloatTensor(state / 5.0).unsqueeze(0).to(self.device)
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        
+        # Exploitation: 
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.train_device)
         with torch.no_grad():
-            q_values = self.policy_net(state_tensor)
-            
-        return torch.argmax(q_values).item()
+            q_values = self.policy_net(state_tensor)    # get Q-values for all possible actions
+        
+        return torch.argmax(q_values).item()    # return index of the action with the highest Q-value
 
     def store_transition(self, state, action, reward, next_state, done):
         """Stores the transition in the replay memory."""
@@ -80,39 +74,39 @@ class DDQNAgent:
         Samples a mini-batch from memory and performs a gradient descent step 
         using the Double DQN logic.
         """
-        if len(self.memory) < BATCH_SIZE:
+        if len(self.memory) < BATCH_SIZE:   # if we don't have enough samples in memory, skip training
             return
             
         # Sample random mini-batch
         minibatch = random.sample(self.memory, BATCH_SIZE)
         
-        states = torch.FloatTensor(np.array([t[0] for t in minibatch])).to(self.device)
-        actions = torch.LongTensor(np.array([t[1] for t in minibatch])).unsqueeze(1).to(self.device)
-        rewards = torch.FloatTensor(np.array([t[2] for t in minibatch])).unsqueeze(1).to(self.device)
-        next_states = torch.FloatTensor(np.array([t[3] for t in minibatch])).to(self.device)
-        dones = torch.FloatTensor(np.array([t[4] for t in minibatch])).unsqueeze(1).to(self.device)
+        states = torch.FloatTensor(np.array([t[0] for t in minibatch])).to(self.train_device)
+        actions = torch.LongTensor(np.array([t[1] for t in minibatch])).unsqueeze(1).to(self.train_device)
+        rewards = torch.FloatTensor(np.array([t[2] for t in minibatch])).unsqueeze(1).to(self.train_device)
+        next_states = torch.FloatTensor(np.array([t[3] for t in minibatch])).to(self.train_device)
+        dones = torch.FloatTensor(np.array([t[4] for t in minibatch])).unsqueeze(1).to(self.train_device)
 
-        # 1. Get current Q-values from Policy Net
-        curr_Q = self.policy_net(states).gather(1, actions)
+        # Get current Q-values from Policy Network
+        curr_Q = self.policy_net(states).gather(1, actions)     # gather(1, actions) selects the Q-values corresponding to the actions taken
         
-        # 2. DDQN Logic: Select best action from Policy Net, evaluate it using Target Net
+        # DDQN logic: Select best action from Policy Network, evaluate it using Target Network
         best_next_actions = self.policy_net(next_states).argmax(1, keepdim=True)
-        next_Q = self.target_net(next_states).gather(1, best_next_actions)
+        next_Q = self.target_net(next_states).gather(1, best_next_actions)          # (theory: next_Q is the estimate of cumulative future reward from the next state s')
         
-        # 3. Calculate target Q-values
-        expected_Q = rewards + (GAMMA * next_Q * (1 - dones))
+        # Calculate target Q-values i.e., the values we want our current Q-values to move towards
+        expected_Q = rewards + (GAMMA * next_Q * (1 - dones))           #(dimensions: [batch_size, 1])
 
-        # 4. Calculate Loss (Mean Squared Error)
-        loss = nn.MSELoss()(curr_Q, expected_Q.detach())
+        # Calculate Loss (Mean Squared Error)
+        loss = nn.MSELoss()(expected_Q.detach(), curr_Q)    # expected - curr is the TD error
 
-        # 5. Optimize the model
+        # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
         self.step_count += 1
         
-        # 6. Replace target network parameters every N steps
+        # Replace target network parameters every N steps
         if self.step_count % TARGET_UPDATE_FREQ == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
