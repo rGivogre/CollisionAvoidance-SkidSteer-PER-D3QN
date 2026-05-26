@@ -1,8 +1,8 @@
 import rclpy
 import numpy as np
 import torch
-from gazebo_env import GazeboEnv
-from agent import DDQNAgent
+from .gazebo_env import GazeboEnv
+from .agent import DDQNAgent
 
 # Parametri di addestramento (dal paper)
 MAX_EPISODES = 3000

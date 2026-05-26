@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             # command name = packageName.module:function
             'random_agent = collision_avoidance_pkg.random_agent:main',
+            'train_ddqn = collision_avoidance_pkg.train:main',
         ],
     },
 )

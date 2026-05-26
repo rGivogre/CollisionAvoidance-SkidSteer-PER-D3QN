@@ -13,7 +13,7 @@ ROBOT_NAME = 'skid_bot'         # Name of the entity in Gazebo
 MAX_LIDAR_RANGE = 10          
 NUM_LIDAR_RAYS = 50             # State size
 COLLISION_DISTANCE = 0.40       # If an obstacle is closer than this, it's considered a collision (in meters)
-LINEAR_SPEED = 0.375            
+LINEAR_SPEED = 0.5            
 ANGULAR_SPEED_BASE = -0.8       
 ANGULAR_SPEED_STEP = 0.16       
 
