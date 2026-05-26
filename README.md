@@ -19,7 +19,15 @@ This environment relies on a custom Skid-Steer robot model. You need to clone it
 cd ~/ros_project_ws/src
 git clone https://github.com/odobot/ROS2-SKID-STEER-DRIVE-ROBOT.git
 ```
-*(Note: After cloning, you will need to rebuild the workspace and open a new terminal to source it, as described in the next section).*
+
+### 3. Adding the LiDAR Sensor
+The original skid-steer repository does not come with a LiDAR sensor configured. We have provided an updated setup file in our repository (`xacro/skid.xacro`). After cloning both repositories, you must overwrite the original robot description file with ours:
+
+```bash
+cp ~/ros_project_ws/src/CollisionAvoidance-RL/xacro/skid.xacro ~/ros_project_ws/src/ROS2-SKID-STEER-DRIVE-ROBOT/src/skid_bot/description/skid.xacro
+```
+
+*(Note: After completing these steps, proceed to build the workspace and open a new terminal to source it).*
 
 ## Building the Workspace
 
