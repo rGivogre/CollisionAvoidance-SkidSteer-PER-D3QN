@@ -10,7 +10,7 @@ import math
 
 # Environment Constants, revise them as needed for our specific Gazebo world and robot configuration
 ROBOT_NAME = 'skid_bot'         # Name of the entity in Gazebo
-MAX_LIDAR_RANGE = 12.5          
+MAX_LIDAR_RANGE = 10          
 NUM_LIDAR_RAYS = 50             # State size
 COLLISION_DISTANCE = 0.40       # If an obstacle is closer than this, it's considered a collision (in meters)
 LINEAR_SPEED = 0.375            
@@ -22,7 +22,7 @@ class GazeboEnv(Node):
         super().__init__('gazebo_env_node')
         
         # Publisher on /cmd_vel to move the robot
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, '/demo/cmd_vel', 10)
         
         # Subscriber on /scan to read the LiDAR scan
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
@@ -36,15 +36,10 @@ class GazeboEnv(Node):
         self.state = np.zeros(NUM_LIDAR_RAYS)
         self.collision = False
 
-        # TODO: Change this approach to one with rectangular safe zones instead of points. So that is more general for training.
-        # (X, Y, Yaw in radiants)
-        self.safe_spawn_points = [
-            (-2.0, 0.5, 0.0),        
-            (1.0, 1.0, 1.57),        
-            (-1.5, -1.5, 3.14),      
-            (1.5, -0.5, -1.57),
-            (0.0, -2.0, 0.78),
-            (2.0, 0.0, -0.78)
+        # Rectangular safe zones for spawn: (x_min, x_max, y_min, y_max)
+        self.safe_spawn_zones = [
+            (1.806280, 9.096520, 2.245540, 4.153355),     # First zone
+            (-21.616300, -19.892700, 3.597740, 10.221505) # Second zone
         ]
     
     def scan_callback(self, msg):
@@ -101,9 +96,13 @@ class GazeboEnv(Node):
         self.cmd_vel_pub.publish(stop_cmd)
         rclpy.spin_once(self, timeout_sec=0.1)
 
-        #TODO: Change this approach to one with rectangular safe zones instead of points.
-        # Choose a random spawn point from the predefined safe locations
-        x, y, yaw = random.choice(self.safe_spawn_points)
+        # Choose a random spawn zone from the predefined safe areas
+        x_min, x_max, y_min, y_max = random.choice(self.safe_spawn_zones)
+        
+        # Make the spawn continuous across the area and randomize the orientation
+        x = random.uniform(x_min, x_max)
+        y = random.uniform(y_min, y_max)
+        yaw = random.uniform(-math.pi, math.pi)
         
         # Create the request to teleport the robot
         req = SetEntityState.Request()

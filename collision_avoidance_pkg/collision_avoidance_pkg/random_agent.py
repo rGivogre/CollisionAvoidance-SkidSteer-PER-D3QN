@@ -31,8 +31,7 @@ def main(args=None):
                 print(f"Action: {action} | Reward: {reward} | State[0]: {state[0]:.2f}m")
                 
                 if done:
-                    stop_cmd = Twist()
-                    env.cmd_vel_pub.publish(stop_cmd)
+                    env.reset() # Reset for the next episode
                     print(f"BOOM! Collision. Epoch {epoch} ended. Total reward: {total_reward}")
                     
     except KeyboardInterrupt:

@@ -63,9 +63,9 @@ def generate_launch_description():
         arguments=[
             '-entity', 'skid_bot',          # Unique name for the entity in Gazebo
             '-topic', 'robot_description', 
-            '-x', '-2.0',  
-            '-y', '0.5',  
-            '-z', '0.1'    
+            '-x', '2.1',  
+            '-y', '3.0',  
+            '-z', '0.01'    
         ],
         output='screen',
     )
