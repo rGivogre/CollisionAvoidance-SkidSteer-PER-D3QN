@@ -8,6 +8,15 @@ import time
 import random
 import math
 
+# Environment Constants, revise them as needed for our specific Gazebo world and robot configuration
+ROBOT_NAME = 'skid_bot'         # Name of the entity in Gazebo
+MAX_LIDAR_RANGE = 12.5          
+NUM_LIDAR_RAYS = 50             # State size
+COLLISION_DISTANCE = 0.40       # If an obstacle is closer than this, it's considered a collision (in meters)
+LINEAR_SPEED = 0.375            
+ANGULAR_SPEED_BASE = -0.8       
+ANGULAR_SPEED_STEP = 0.16       
+
 class GazeboEnv(Node):
     def __init__(self):
         super().__init__('gazebo_env_node')
@@ -24,11 +33,8 @@ class GazeboEnv(Node):
             self.get_logger().info('Waiting for /gazebo/set_entity_state service...')
         
         # Internal state variables
-        self.state = np.zeros(50) # Initialize the 50-element array
+        self.state = np.zeros(NUM_LIDAR_RAYS)
         self.collision = False
-        self.min_distance = 0.20  # If an obstacle is closer than 20 cm, it's a collision
-
-        # TODO: Ask if is better to do normalization here or in the agent.
 
         # TODO: Change this approach to one with rectangular safe zones instead of points. So that is more general for training.
         # (X, Y, Yaw in radiants)
@@ -46,28 +52,31 @@ class GazeboEnv(Node):
         # Convert measurements to a numpy array
         ranges = np.array(msg.ranges)
         
-        # The laser sometimes returns "infinite" if it sees nothing. Limit to 5 meters.
-        ranges[np.isinf(ranges)] = 5.0
-        ranges[np.isnan(ranges)] = 5.0
+        # The laser sometimes returns "infinite" if it sees nothing. Limit to max range.
+        ranges[np.isinf(ranges)] = MAX_LIDAR_RANGE
+        ranges[np.isnan(ranges)] = MAX_LIDAR_RANGE
         
-        # Extract exactly 50 uniformly distributed measurements
-        # np.linspace selects 50 evenly spaced indices from the array's total length
-        indices = np.linspace(0, len(ranges) - 1, 50, dtype=int)
-        self.state = ranges[indices]
+        # Extract uniformly distributed measurements
+        # np.linspace selects NUM_LIDAR_RAYS evenly spaced indices from the array's total length
+        indices = np.linspace(0, len(ranges) - 1, NUM_LIDAR_RAYS, dtype=int)
+        raw_state = ranges[indices]
         
-        # Check if a collision occurred (if the shortest ray is below the threshold)
-        if np.min(self.state) < self.min_distance:
+        # Check if a collision occurred using raw distance (before normalization)
+        if np.min(raw_state) < COLLISION_DISTANCE:
             self.collision = True
         else:
             self.collision = False
+            
+        # Normalize to [0, 1] by dividing by max range, for better neural network performance
+        self.state = raw_state / MAX_LIDAR_RANGE
 
     def step(self, action):
         """Receives the action (0-10), moves the robot and calculates the reward."""
         
-        # Move the robot using the formula from the paper
+        # Move the robot using parameterized speeds (paper's formula)
         vel_cmd = Twist()
-        vel_cmd.linear.x = 0.15  # Fixed forward speed (e.g. 0.15 m/s)
-        vel_cmd.angular.z = -0.8 + (0.16 * action)
+        vel_cmd.linear.x = LINEAR_SPEED
+        vel_cmd.angular.z = ANGULAR_SPEED_BASE + (ANGULAR_SPEED_STEP * action)
         
         self.cmd_vel_pub.publish(vel_cmd)
         
@@ -98,7 +107,7 @@ class GazeboEnv(Node):
         
         # Create the request to teleport the robot
         req = SetEntityState.Request()
-        req.state.name = 'turtlebot3_burger'
+        req.state.name = ROBOT_NAME
         req.state.reference_frame = 'world'
         
         # Set the robot's position and orientation
