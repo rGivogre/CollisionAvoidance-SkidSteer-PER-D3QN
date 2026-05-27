@@ -4,9 +4,7 @@ import numpy as np
 import torch
 import os
 from .gazebo_env import GazeboEnv
-from .agent import QNetwork, STATE_SIZE, ACTION_SIZE
-from .gazebo_env import GazeboEnv
-from .agent import QNetwork, STATE_SIZE, ACTION_SIZE
+from .agents.DDQN_agent import QNetwork, STATE_SIZE, ACTION_SIZE
 
 # Nota: Creiamo una classe di test che eredita da Node per gestire nativamente i parametri ROS 2
 class SkidbotTestManager(Node):
@@ -35,7 +33,7 @@ def main():
     test_manager = SkidbotTestManager()
     
     # Inizializza l'ambiente di simulazione Gazebo
-    env = GazeboEnv(is_training=False)
+    env = GazeboEnv()
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n[TEST] Uso del dispositivo: {device}")
@@ -61,7 +59,7 @@ def main():
     print("\n--- Inizio Fase di Test dello Skidbot ---")
 
     for episode in range(1, test_manager.num_episodes + 1):
-        state, _ = env.reset()
+        state, start_coords = env.reset()
         episode_reward = 0
         steps = 0
         
@@ -74,7 +72,7 @@ def main():
                 q_values = policy_net(state_tensor)
             
             action_idx = torch.argmax(q_values).item()
-            next_state, reward, done, _ = env.step(action_idx)
+            next_state, reward, done, crash_coords = env.step(action_idx)
             
             state = next_state
             episode_reward += reward

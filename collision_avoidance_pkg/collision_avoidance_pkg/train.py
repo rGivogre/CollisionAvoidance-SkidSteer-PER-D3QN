@@ -3,12 +3,12 @@ import numpy as np
 import torch
 import os
 from .gazebo_env import GazeboEnv
-from .agent import DDQNAgent
+from .agents.DDQN_agent import DDQNAgent
 
 # Training parameters (from the paper)
 MAX_EPISODES = 3000
-MAX_STEPS_PER_EPISODE = 500
-SAVE_EVERY = 100  # Save the model every x episodes
+MAX_STEPS_PER_EPISODE = 5000
+SAVE_EVERY = 1000  # Save the model every x episodes
 
 def main():
     # Initialize ROS 2 system, environment node, and the DDQN agent
@@ -75,7 +75,7 @@ def main():
         print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}, Crash: {crash_coords if done else 'No'}")
 
         # Save the model and log data
-        if episode % SAVE_EVERY == 0:
+        if (episode % SAVE_EVERY  == 0) or (episode == 100):
             model_path = os.path.join(models_dir, f"ddqn_skidbot_ep{episode}.pth")
             torch.save(agent.policy_net.state_dict(), model_path)
             

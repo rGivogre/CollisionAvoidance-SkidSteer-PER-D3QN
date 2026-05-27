@@ -65,7 +65,8 @@ def generate_launch_description():
             '-topic', 'robot_description', 
             '-x', '2.1',  
             '-y', '3.0',  
-            '-z', '0.01'    
+            '-z', '0.01',
+            '-timeout', '100'    
         ],
         output='screen',
     )

@@ -77,3 +77,9 @@ ros2 run collision_avoidance_pkg train_ddqn
 ```bash
 ros2 run collision_avoidance_pkg test
 ```
+
+### Generic terminal
+Before running a new test or training, to kill the background processes
+```bash
+killall -9 gzserver gzclient
+```
