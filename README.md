@@ -12,6 +12,10 @@ sudo apt install python3-pip
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
 
+pip install cpprb
+pip install seaborn
+
+
 ### 2. Skid-Steer Robot Package
 This environment relies on a custom Skid-Steer robot model. You need to clone its repository into your workspace's `src` folder (right next to the `CollisionAvoidance-RL` folder):
 

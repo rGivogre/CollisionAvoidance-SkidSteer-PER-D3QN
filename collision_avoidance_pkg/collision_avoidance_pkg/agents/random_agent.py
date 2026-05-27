@@ -2,7 +2,7 @@ import rclpy
 import random
 import time
 from geometry_msgs.msg import Twist
-from .gazebo_env import GazeboEnv   # Import the environment
+from ..gazebo_env import GazeboEnv   # Import the environment
 
 def main(args=None):
     rclpy.init(args=args)
