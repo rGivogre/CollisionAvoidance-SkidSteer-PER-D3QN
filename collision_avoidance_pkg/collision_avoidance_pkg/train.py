@@ -21,6 +21,8 @@ def main():
     # --- LOGGING INITIALIZATION ---
     reward_history = []
     action_history = []
+    crash_history = []
+    start_history = []
     os.makedirs('logs', exist_ok=True)
     # ------------------------------
     
@@ -29,7 +31,8 @@ def main():
     #3000
     for episode in range(1, MAX_EPISODES + 1):
         # 3. Reset dell'ambiente (Pseudocode: Initialize state s1)
-        state = env.reset()
+        state, start_coords = env.reset()
+        start_history.append(start_coords)
         episode_reward = 0
         episode_actions = []  # Track actions taken this episode
 
@@ -40,7 +43,7 @@ def main():
             episode_actions.append(action_idx)  # Log action
             
             # 5. Esegui l'azione in Gazebo (Pseudocode: Execute a_t, observe r_t, s_t+1)
-            next_state, reward, done = env.step(action_idx)
+            next_state, reward, done, crash_coords = env.step(action_idx)
             
             # 6. Salva l'esperienza nella memoria (Pseudocode: Store transition)
             agent.store_transition(state, action_idx, reward, next_state, done)
@@ -52,6 +55,7 @@ def main():
             episode_reward += reward
             
             if done:
+                crash_history.append(crash_coords)  # Log crash coordinates
                 break
         
         # 8. Aggiorna epsilon (esplorazione) dopo ogni episodio
@@ -66,7 +70,7 @@ def main():
         # ---------------------------
 
         # Log dei progressi
-        print(f"Episodio: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}")
+        print(f"Episodio: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}, Crash: {crash_coords if done else 'No'}")
 
         # 9. Salvataggio del modello e dei log data
         if episode % SAVE_EVERY == 0:
@@ -75,6 +79,7 @@ def main():
             # Save data arrays for plot.py
             np.save('logs/rewards.npy', np.array(reward_history))
             np.save('logs/actions.npy', np.array(action_history))
+            np.save('logs/crashes.npy', np.array(crash_history))
             print(f"Modello e log salvati all'episodio {episode}")
 
     # Pulizia finale

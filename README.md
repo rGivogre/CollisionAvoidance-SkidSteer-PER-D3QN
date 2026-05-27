@@ -69,3 +69,7 @@ Wait for Gazebo to fully load the physics server in the first terminal, then run
 ```bash
 ros2 run collision_avoidance_pkg random_agent
 ```
+
+```bash
+ros2 run collision_avoidance_pkg train_ddqn
+```

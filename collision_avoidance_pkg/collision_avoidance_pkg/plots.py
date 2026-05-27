@@ -11,6 +11,14 @@ def load_data():
         print("Error: Log files not found. Make sure training has run past at least 100 episodes.")
         return None, None
 
+def load_crash_data():
+    try:
+        crashes = np.load('logs/crashes.npy')
+        return crashes
+    except FileNotFoundError:
+        print("Warning: 'logs/crashes.npy' not found. Skip crash heatmap or wait for a crash to occur.")
+        return None
+
 def plot_convergence(rewards):
     """Plots the raw rewards per episode and a moving average curve."""
     plt.figure(figsize=(10, 5))
@@ -110,9 +118,63 @@ def plot_exploration_vs_exploitation(rewards):
     plt.savefig('logs/exploration_vs_reward.png', dpi=300)
     plt.show()
 
+def plot_crashes_heatmap(crashes):
+    """Overlays a 2D density heatmap of collision points onto the world map image."""
+    if crashes is None or len(crashes) == 0:
+        return
+
+    try:
+        map_img = plt.imread('logs/map_screenshot.png')
+    except FileNotFoundError:
+        print("Error: To generate the overlay, save your map screenshot as 'logs/map_screenshot.png'")
+        return
+
+    x_crashes = crashes[:, 0]
+    y_crashes = crashes[:, 1]
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Definizione dei confini fisici del mondo di Gazebo in metri [xmin, xmax, ymin, ymax]
+    # Modifica questi parametri in base alle dimensioni effettive del tuo file .world
+    world_extent = [-10.0, 10.0, -10.0, 10.0]
+
+    # Mostra l'immagine di sfondo mappandola sulle coordinate reali di Gazebo
+    ax.imshow(map_img, extent=world_extent, origin='upper', alpha=0.8)
+
+    # Disegna il density heatmap (KDE) se ci sono abbastanza campioni per calcolare la densità
+    if len(crashes) > 5:
+        sns.kdeplot(
+            x=x_crashes, y=y_crashes, 
+            ax=ax,
+            fill=True, 
+            cmap="Reds", 
+            alpha=0.5,      # Trasparenza per visualizzare i muri sottostanti
+            thresh=0.1,     # Esclude il rumore a bassissima densità
+            levels=10       # Dettaglio dei livelli di densità
+        )
+    
+    # Disegna i singoli punti esatti di impatto come piccoli punti scuri
+    ax.scatter(x_crashes, y_crashes, color='darkred', s=6, alpha=0.6, label='Crash Site')
+
+    ax.set_title('Robot Collision Distribution Heatmap Overlay')
+    ax.set_xlabel('Global X Position (meters)')
+    ax.set_ylabel('Global Y Position (meters)')
+    ax.set_xlim(world_extent[0], world_extent[1])
+    ax.set_ylim(world_extent[2], world_extent[3])
+    ax.grid(True, linestyle=':', alpha=0.5)
+    ax.legend()
+
+    plt.savefig('logs/crash_heatmap_overlay.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
 if __name__ == '__main__':
     rewards, actions = load_data()
+    crashes = load_crash_data()
+    
     if rewards is not None:
         plot_convergence(rewards)
-        plot_action_heatmap(actions, blocks_of_episodes=100) # Adjust block chunk sizes if needed
+        plot_action_heatmap(actions, blocks_of_episodes=100)
         plot_exploration_vs_exploitation(rewards)
+        
+    if crashes is not None:
+        plot_crashes_heatmap(crashes)

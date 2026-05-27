@@ -3,6 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from gazebo_msgs.srv import SetEntityState
+from nav_msgs.msg import Odometry
 import numpy as np
 import time
 import random
@@ -32,6 +33,9 @@ class GazeboEnv(Node):
         while not self.set_state_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for /gazebo/set_entity_state service...')
         
+        # 1. Add Subscriber for Odometry to track position
+        self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, 10)
+
         # Internal state variables
         self.state = np.zeros(NUM_LIDAR_RAYS)
         self.collision = False
@@ -41,6 +45,16 @@ class GazeboEnv(Node):
             (1.806280, 9.096520, 2.245540, 4.153355),     # First zone
             (-21.616300, -19.892700, 3.597740, 10.221505) # Second zone
         ]
+        
+        self.start_coords = (0.0, 0.0)
+        # 2. Initialize coordinate tracking variables
+        self.current_x = 0.0
+        self.current_y = 0.0
+
+    def odom_callback(self, msg):
+        """Callback to constantly update current global position."""
+        self.current_x = msg.pose.pose.position.x
+        self.current_y = msg.pose.pose.position.y
     
     def scan_callback(self, msg):
         """Processes LiDAR data every time it arrives."""
@@ -83,11 +97,13 @@ class GazeboEnv(Node):
         if self.collision:
             reward = -1000
             done = True
+            crash_coords = (self.current_x, self.current_y)
         else:
             reward = 5
             done = False
+            crash_coords = None
             
-        return self.state.copy(), reward, done
+        return self.state.copy(), reward, done, crash_coords
     
     def reset(self):
         """Resets the robot teleporting it to a random safe location and returns the initial state."""
@@ -126,4 +142,6 @@ class GazeboEnv(Node):
         rclpy.spin_once(self, timeout_sec=0.1)
         
         self.collision = False
-        return self.state.copy()
+        start_coords = (self.current_x, self.current_y)
+        
+        return self.state.copy(), start_coords
