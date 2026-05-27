@@ -41,7 +41,7 @@ For active development, always use the `--symlink-install` flag. This flag creat
 If you previously built without this flag or encounter caching issues, clean the workspace first:
 
 ```bash
-cd ~/ros_project
+cd ~/ros_project_ws
 rm -rf build/ install/ log/
 colcon build --symlink-install
 ```
@@ -62,6 +62,7 @@ ros2 launch collision_avoidance_pkg sim_environment.launch.py
 **Launch Arguments Available:**
 - `gui` *(default: `false`)*: Set this to `true` to open the Gazebo graphical interface. Keeping it `false` (headless mode) is optimal for high-speed RL training because it doesn't waste GPU resources rendering graphics.
 - `world_file` *(default: `multi_maps.world`)*: The name of the world file to load from the package's `worlds/` folder.
+- `speedup` *(default: `true`)*: Set to `true` to run physics as fast as possible (unlimited RTF) for training. Set to `false` to limit the simulation to 1x Real-Time Factor (ideal when `gui` is `true` for visual testing).
 
 *Example with custom arguments:*
 ```bash

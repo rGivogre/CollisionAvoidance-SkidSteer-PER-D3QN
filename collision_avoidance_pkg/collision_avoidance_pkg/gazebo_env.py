@@ -2,8 +2,9 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
-from gazebo_msgs.srv import SetEntityState, GetPhysicsProperties, SetPhysicsProperties
+from gazebo_msgs.srv import SetEntityState
 from nav_msgs.msg import Odometry
+from rclpy.parameter import Parameter
 import numpy as np
 import random
 import math
@@ -18,8 +19,8 @@ ANGULAR_SPEED_BASE = -0.8
 ANGULAR_SPEED_STEP = 0.16       
 
 class GazeboEnv(Node):
-    def __init__(self, is_training=True):
-        super().__init__('gazebo_env_node', allow_undeclared_parameters=True, initial_parameters=[{'use_sim_time': True}])
+    def __init__(self):
+        super().__init__('gazebo_env_node', allow_undeclared_parameters=True, parameter_overrides=[Parameter('use_sim_time', Parameter.Type.BOOL, True)])
         # use_sim_time is crucial for synchronizing with Gazebo's clock, especially when running in fast mode during training. It ensures that all time-based operations (like waiting for sensor updates) are aligned with the simulation time rather than real-world time.
 
         # Publisher on /demo/cmd_vel to move the robot
@@ -33,10 +34,6 @@ class GazeboEnv(Node):
         while not self.set_state_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for /gazebo/set_entity_state service...')
             
-        # Services to change simulation speed
-        self.get_physics_client = self.create_client(GetPhysicsProperties, '/gazebo/get_physics_properties')
-        self.set_physics_client = self.create_client(SetPhysicsProperties, '/gazebo/set_physics_properties')
-        
         # Add Subscriber for Odometry to track position
         self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, 10)
 
@@ -56,8 +53,6 @@ class GazeboEnv(Node):
         self.current_y = 0.0
         
         self.new_scan_received = False
-
-        self.set_physics_speed(fast_mode=is_training)   # Adjust physics speed based on training mode
     
     def scan_callback(self, msg):
         """Processes LiDAR data every time it arrives."""
@@ -87,29 +82,6 @@ class GazeboEnv(Node):
         """Callback to constantly update current global position."""
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
-
-    def set_physics_speed(self, fast_mode=True):
-        """Modifies Gazebo physics to run unthrottled (for training) or 1x (for testing)."""
-        self.get_logger().info('Fetching current physics properties...')
-        self.get_physics_client.wait_for_service()
-        req_get = GetPhysicsProperties.Request()
-        future_get = self.get_physics_client.call_async(req_get)
-        rclpy.spin_until_future_complete(self, future_get)
-        physics_props = future_get.result()
-
-        target_update_rate = 0.0 if fast_mode else (1.0 / physics_props.time_step)  # 0.0 means "run as fast as possible", otherwise set to real-time rate based on the time step
-        
-        self.get_logger().info(f'Setting fast_mode={fast_mode}')
-        self.set_physics_client.wait_for_service()
-        req_set = SetPhysicsProperties.Request()
-        req_set.time_step = physics_props.time_step
-        req_set.max_update_rate = target_update_rate
-        req_set.gravity = physics_props.gravity
-        req_set.ode_config = physics_props.ode_config
-        
-        future_set = self.set_physics_client.call_async(req_set)
-        rclpy.spin_until_future_complete(self, future_set)
-        self.get_logger().info('Physics properties updated.')
 
     def step(self, action):
         """Receives the action (0-10), moves the robot and calculates the reward."""
