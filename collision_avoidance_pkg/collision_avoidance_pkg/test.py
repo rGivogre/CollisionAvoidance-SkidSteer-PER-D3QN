@@ -3,8 +3,8 @@ from rclpy.node import Node
 import numpy as np
 import torch
 import os
-from gazebo_env import GazeboEnv
-from agent import QNetwork, STATE_SIZE, ACTION_SIZE
+from .gazebo_env import GazeboEnv
+from .agent import QNetwork, STATE_SIZE, ACTION_SIZE
 
 # Nota: Creiamo una classe di test che eredita da Node per gestire nativamente i parametri ROS 2
 class SkidbotTestManager(Node):
@@ -12,7 +12,7 @@ class SkidbotTestManager(Node):
         super().__init__('skidbot_test_manager')
         
         # 1. Dichiara i parametri ROS 2 con i loro valori di default
-        self.declare_parameter('model_path', 'ddqn_skidbot_ep3000.pth')
+        self.declare_parameter('model_path', 'models/ddqn_skidbot_ep3000.pth')
         self.declare_parameter('num_test_episodes', 5)
         self.declare_parameter('max_steps_per_episode', 500)
         
@@ -59,7 +59,7 @@ def main():
     print("\n--- Inizio Fase di Test dello Skidbot ---")
 
     for episode in range(1, test_manager.num_episodes + 1):
-        state = env.reset()
+        state, start_coords = env.reset()
         episode_reward = 0
         steps = 0
         
@@ -72,7 +72,7 @@ def main():
                 q_values = policy_net(state_tensor)
             
             action_idx = torch.argmax(q_values).item()
-            next_state, reward, done = env.step(action_idx)
+            next_state, reward, done, crash_coords = env.step(action_idx)
             
             state = next_state
             episode_reward += reward
