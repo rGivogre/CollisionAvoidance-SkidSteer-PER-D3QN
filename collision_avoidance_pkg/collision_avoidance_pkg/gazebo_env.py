@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
+from rclpy.qos import qos_profile_sensor_data
 from gazebo_msgs.srv import SetEntityState
 from nav_msgs.msg import Odometry
 from rclpy.parameter import Parameter
@@ -27,7 +28,7 @@ class GazeboEnv(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, '/demo/cmd_vel', 10)
         
         # Subscriber on /scan to read the LiDAR scan
-        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
 
         # Service client to teleport the robot (SetEntityState)
         self.set_state_client = self.create_client(SetEntityState, '/gazebo/set_entity_state')
@@ -35,7 +36,7 @@ class GazeboEnv(Node):
             self.get_logger().info('Waiting for /gazebo/set_entity_state service...')
             
         # Add Subscriber for Odometry to track position
-        self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, 10)
+        self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, qos_profile_sensor_data)
 
         # Internal state variables
         self.state = np.zeros(NUM_LIDAR_RAYS)
@@ -145,6 +146,11 @@ class GazeboEnv(Node):
         # Call the service to teleport the robot
         future = self.set_state_client.call_async(req)
         rclpy.spin_until_future_complete(self, future)
+
+        # QUEUE DRAIN (Best Practice): 
+        # Actively flush any old LiDAR messages still in the queue after a crash
+        for _ in range(10):
+            rclpy.spin_once(self, timeout_sec=0.01)
 
         # Wait for a fresh scan at the new location
         self.new_scan_received = False
