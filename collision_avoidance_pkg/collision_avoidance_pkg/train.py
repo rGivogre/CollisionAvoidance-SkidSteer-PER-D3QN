@@ -2,6 +2,7 @@ import rclpy
 import numpy as np
 import torch
 import os
+from datetime import datetime
 from .gazebo_env import GazeboEnv
 from .agents.DDQN_agent import DDQNAgent
 
@@ -16,13 +17,13 @@ def main():
     env = GazeboEnv()
     agent = DDQNAgent()
     
-    # Setup project directories for saving models and plot data
-    current_dir = os.path.dirname(os.path.abspath(__file__))    # Find the root of the project (CollisionAvoidance-RL) regardless of cwd
-    project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
-    models_dir = os.path.join(project_root, 'models')
-    plot_data_dir = os.path.join(project_root, 'plot_data')
+    # Setup project directories for saving models and plot data (assuming execution from repo root)
+    models_dir = 'models'
+    plot_data_dir = 'plot_data'
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(plot_data_dir, exist_ok=True)
+    
+    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
     reward_history = []
     action_history = []
@@ -72,20 +73,23 @@ def main():
         agent.update_epsilon()
 
         # Show progress 
-        print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}, Crash: {crash_coords if done else 'No'}")
+        formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
+        print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}, Crash: {formatted_crash}")
 
         # Save the model and log data
-        if (episode % SAVE_EVERY  == 0) or (episode == 100):
-            model_path = os.path.join(models_dir, f"ddqn_skidbot_ep{episode}.pth")
+        if (episode % SAVE_EVERY  == 0) or (episode == 10):
+            model_path = os.path.join(models_dir, f"ddqn_ep{episode}_{run_timestamp}.pth")
             torch.save(agent.policy_net.state_dict(), model_path)
             
             # Save data arrays for plot.py
-            np.save(os.path.join(plot_data_dir, 'rewards.npy'), np.array(reward_history))
-            np.save(os.path.join(plot_data_dir, 'actions.npy'), np.array(action_history))
-            np.save(os.path.join(plot_data_dir, 'crashes.npy'), np.array(crash_history))
-            np.save(os.path.join(plot_data_dir, 'epsilons.npy'), np.array(epsilon_history))
+            np.save(os.path.join(plot_data_dir, f'rewards_{run_timestamp}.npy'), np.array(reward_history))
+            np.save(os.path.join(plot_data_dir, f'actions_{run_timestamp}.npy'), np.array(action_history))
+            np.save(os.path.join(plot_data_dir, f'crashes_{run_timestamp}.npy'), np.array(crash_history))
+            np.save(os.path.join(plot_data_dir, f'epsilons_{run_timestamp}.npy'), np.array(epsilon_history))
             
             print(f"Model and logs saved at episode {episode}")
+            print(f"  -> Model: {os.path.abspath(model_path)}")
+            print(f"  -> Data folder: {os.path.abspath(plot_data_dir)}")
 
     # Final cleanup
     print("Training completed.")
