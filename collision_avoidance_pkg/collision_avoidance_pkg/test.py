@@ -5,6 +5,8 @@ import torch
 import os
 from .gazebo_env import GazeboEnv
 from .agent import QNetwork, STATE_SIZE, ACTION_SIZE
+from .gazebo_env import GazeboEnv
+from .agent import QNetwork, STATE_SIZE, ACTION_SIZE
 
 # Nota: Creiamo una classe di test che eredita da Node per gestire nativamente i parametri ROS 2
 class SkidbotTestManager(Node):
@@ -12,7 +14,7 @@ class SkidbotTestManager(Node):
         super().__init__('skidbot_test_manager')
         
         # 1. Dichiara i parametri ROS 2 con i loro valori di default
-        self.declare_parameter('model_path', 'ddqn_skidbot_ep3000.pth')
+        self.declare_parameter('model_path', 'models/ddqn_skidbot_ep3000.pth')
         self.declare_parameter('num_test_episodes', 5)
         self.declare_parameter('max_steps_per_episode', 500)
         
