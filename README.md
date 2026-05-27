@@ -37,7 +37,7 @@ For active development, always use the `--symlink-install` flag. This flag creat
 If you previously built without this flag or encounter caching issues, clean the workspace first:
 
 ```bash
-cd ~/ros_project_ws
+cd ~/ros_project
 rm -rf build/ install/ log/
 colcon build --symlink-install
 ```
@@ -72,4 +72,8 @@ ros2 run collision_avoidance_pkg random_agent
 
 ```bash
 ros2 run collision_avoidance_pkg train_ddqn
+```
+
+```bash
+ros2 run collision_avoidance_pkg test
 ```
