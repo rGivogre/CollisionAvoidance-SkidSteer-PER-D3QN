@@ -46,6 +46,12 @@ rm -rf build/ install/ log/
 colcon build --symlink-install
 ```
 
+```bash
+cd ~/ros_project
+rm -rf build/ install/ log/
+colcon build --symlink-install
+```
+
 *(Note: You must still re-run `colcon build --symlink-install` if you create brand new files or modify `setup.py` / `package.xml`).*
 
 ## How to Run

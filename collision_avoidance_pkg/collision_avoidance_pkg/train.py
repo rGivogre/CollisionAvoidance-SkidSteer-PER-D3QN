@@ -77,7 +77,7 @@ def main():
         print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}, Crash: {formatted_crash}")
 
         # Save the model and log data
-        if (episode % SAVE_EVERY  == 0) or (episode == 10):
+        if (episode % SAVE_EVERY  == 0) or (episode == 100):
             model_path = os.path.join(models_dir, f"ddqn_ep{episode}_{run_timestamp}.pth")
             torch.save(agent.policy_net.state_dict(), model_path)
             
