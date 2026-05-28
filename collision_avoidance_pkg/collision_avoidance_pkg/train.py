@@ -41,11 +41,12 @@ def main():
     # Setup project directories for saving models and plot data (assuming execution from repo root)
     models_base_dir = 'models'
     plot_data_base_dir = 'plot_data'
-    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_speed_{linear_speed}')
+    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') 
+    run_name = run_timestamp + f"ddqn_speed{linear_speed}_lr{learning_rate}"
     
     # Create subfolders for the specific run using the timestamp
-    models_dir = os.path.join(models_base_dir, run_timestamp)
-    plot_data_dir = os.path.join(plot_data_base_dir, run_timestamp)
+    models_dir = os.path.join(models_base_dir, run_name)
+    plot_data_dir = os.path.join(plot_data_base_dir, run_name)
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(plot_data_dir, exist_ok=True)
     
