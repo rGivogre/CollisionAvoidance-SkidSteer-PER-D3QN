@@ -4,17 +4,16 @@ This ROS 2 package provides a Deep Reinforcement Learning environment for a cust
 
 ## Prerequisites
 
-### 1. Python & PyTorch
-Install `pip` and the PyTorch CPU version:
+### 1. Python Dependencies
+Install `pip` and the required Python packages using the provided `requirements.txt` file. This handles PyTorch, NumPy, and plotting libraries:
 
 ```bash
+sudo apt update
 sudo apt install python3-pip
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+cd ~/ros_project_ws/src/CollisionAvoidance-RL
+pip install -r requirements.txt
 ```
 
-pip install cpprb
-pip install seaborn
-pip install "numpy<2"
 
 
 ### 2. Skid-Steer Robot Package
@@ -95,3 +94,22 @@ Before running a new test or training, to kill the background processes
 ```bash
 killall -9 gzserver gzclient
 ```
+
+## Data Visualization (Plots)
+
+During training, the agent's performance (rewards, actions, epsilon decay, and crash logs) is automatically saved in timestamped folders inside `plot_data/`. 
+
+To visualize the results and generate graphs, you can run the `plots.py` script from the root of the repository:
+
+```bash
+cd ~/ros_project_ws/src/CollisionAvoidance-RL
+python3 collision_avoidance_pkg/collision_avoidance_pkg/plots.py
+```
+By default, the script will automatically find and plot the **most recent training run**.
+
+If you want to view a specific historical run, pass the timestamp folder name using the `--run` argument:
+```bash
+python3 collision_avoidance_pkg/collision_avoidance_pkg/plots.py --run 20260528_011240
+```
+
+*(Note: To render the crash site distribution correctly, make sure you have a top-down screenshot of your environment saved as `images/map_screenshot.png` in the repository).*
