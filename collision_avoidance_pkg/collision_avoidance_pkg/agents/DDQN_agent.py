@@ -34,8 +34,10 @@ class QNetwork(nn.Module):
 
 
 class DDQNAgent:
-    def __init__(self):
+    def __init__(self, learning_rate=LEARNING_RATE):
         self.train_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.learning_rate = learning_rate
 
         # Initialize Policy Network and Target Network
         self.policy_net = QNetwork(STATE_SIZE, ACTION_SIZE).to(self.train_device)
@@ -44,8 +46,9 @@ class DDQNAgent:
         self.target_net.load_state_dict(self.policy_net.state_dict())   # Copy weights from policy network to target network
         self.target_net.eval()  # Target network is only used for inference, it is not trained during the optimization step
         
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.learning_rate)
     
+
         self.memory = deque(maxlen=100000)  # Experience Replay Memory
         
         # Epsilon-greedy parameters

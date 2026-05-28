@@ -15,18 +15,16 @@ ROBOT_NAME = 'skid_bot'         # Name of the entity in Gazebo
 MAX_LIDAR_RANGE = 10          
 NUM_LIDAR_RAYS = 50             # State size
 COLLISION_DISTANCE = 0.40       # If an obstacle is closer than this, it's considered a collision (in meters)
-LINEAR_SPEED = 0.5            
 ANGULAR_SPEED_BASE = -0.8       
 ANGULAR_SPEED_STEP = 0.16       
 
 class GazeboEnv(Node):
-    def __init__(self):
+    def __init__(self, linear_speed=0.3):
         super().__init__('gazebo_env_node', allow_undeclared_parameters=True, parameter_overrides=[Parameter('use_sim_time', Parameter.Type.BOOL, True)])
         # use_sim_time is crucial for synchronizing with Gazebo's clock, especially when running in fast mode during training. It ensures that all time-based operations (like waiting for sensor updates) are aligned with the simulation time rather than real-world time.
 
         # Publisher on /demo/cmd_vel to move the robot
         self.cmd_vel_pub = self.create_publisher(Twist, '/demo/cmd_vel', 10)
-        
         # Subscriber on /scan to read the LiDAR scan
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
 
@@ -53,6 +51,8 @@ class GazeboEnv(Node):
         self.current_x = 0.0
         self.current_y = 0.0
         
+        self.linear_speed = linear_speed
+
         self.new_scan_received = False
     
     def scan_callback(self, msg):
@@ -89,7 +89,7 @@ class GazeboEnv(Node):
         
         # Move the robot using parameterized speeds (paper's formula)
         vel_cmd = Twist()
-        vel_cmd.linear.x = LINEAR_SPEED
+        vel_cmd.linear.x = self.linear_speed
         vel_cmd.angular.z = ANGULAR_SPEED_BASE + (ANGULAR_SPEED_STEP * action)
         
         self.cmd_vel_pub.publish(vel_cmd)

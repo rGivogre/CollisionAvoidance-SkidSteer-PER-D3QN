@@ -1,3 +1,5 @@
+import argparse
+
 import rclpy
 import numpy as np
 import torch
@@ -8,19 +10,38 @@ from .agents.DDQN_agent import DDQNAgent
 
 # Training parameters (from the paper)
 MAX_EPISODES = 3000
-MAX_STEPS_PER_EPISODE = 6000
+MAX_STEPS_PER_EPISODE = 3000
 SAVE_EVERY = 1000  # Save the model every x episodes
 
 def main():
+
+    parser = argparse.ArgumentParser(description="Skidbot DDQN Training Node")
+    parser.add_argument(
+        '--speed', 
+        type=float, 
+        default=0.3, 
+        help='Linear velocity (LINEAR_SPEED) for the robot navigation'
+    )
+    parser.add_argument(
+        '--learning_rate', 
+        type=float, 
+        default=2.5e-4, 
+        help='Learning rate for the neural network'
+    )
+    # Extract known args so it doesn't crash on ROS 2 internal arguments
+    args, _ = parser.parse_known_args()
+    linear_speed = args.speed
+    learning_rate = args.learning_rate
+
     # Initialize ROS 2 system, environment node, and the DDQN agent
     rclpy.init()
-    env = GazeboEnv()
-    agent = DDQNAgent()
+    env = GazeboEnv(linear_speed = linear_speed)
+    agent = DDQNAgent(learning_rate=learning_rate)
     
     # Setup project directories for saving models and plot data (assuming execution from repo root)
     models_base_dir = 'models'
     plot_data_base_dir = 'plot_data'
-    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_speed_{linear_speed}')
     
     # Create subfolders for the specific run using the timestamp
     models_dir = os.path.join(models_base_dir, run_timestamp)
