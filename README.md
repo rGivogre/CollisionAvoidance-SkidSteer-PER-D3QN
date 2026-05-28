@@ -14,6 +14,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 pip install cpprb
 pip install seaborn
+pip install "numpy<2"
 
 
 ### 2. Skid-Steer Robot Package

@@ -8,7 +8,7 @@ from .agents.DDQN_agent import DDQNAgent
 
 # Training parameters (from the paper)
 MAX_EPISODES = 3000
-MAX_STEPS_PER_EPISODE = 5000
+MAX_STEPS_PER_EPISODE = 6000
 SAVE_EVERY = 1000  # Save the model every x episodes
 
 def main():
@@ -18,12 +18,15 @@ def main():
     agent = DDQNAgent()
     
     # Setup project directories for saving models and plot data (assuming execution from repo root)
-    models_dir = 'models'
-    plot_data_dir = 'plot_data'
+    models_base_dir = 'models'
+    plot_data_base_dir = 'plot_data'
+    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Create subfolders for the specific run using the timestamp
+    models_dir = os.path.join(models_base_dir, run_timestamp)
+    plot_data_dir = os.path.join(plot_data_base_dir, run_timestamp)
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(plot_data_dir, exist_ok=True)
-    
-    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
     reward_history = []
     action_history = []
@@ -78,18 +81,18 @@ def main():
 
         # Save the model and log data
         if (episode % SAVE_EVERY  == 0) or (episode == 100):
-            model_path = os.path.join(models_dir, f"ddqn_ep{episode}_{run_timestamp}.pth")
+            model_path = os.path.join(models_dir, f"ddqn_ep{episode}_maxstep{MAX_STEPS_PER_EPISODE}.pth")
             torch.save(agent.policy_net.state_dict(), model_path)
             
-            # Save data arrays for plot.py
-            np.save(os.path.join(plot_data_dir, f'rewards_{run_timestamp}.npy'), np.array(reward_history))
-            np.save(os.path.join(plot_data_dir, f'actions_{run_timestamp}.npy'), np.array(action_history))
-            np.save(os.path.join(plot_data_dir, f'crashes_{run_timestamp}.npy'), np.array(crash_history))
-            np.save(os.path.join(plot_data_dir, f'epsilons_{run_timestamp}.npy'), np.array(epsilon_history))
+            # Save data arrays for plot.py with standard names inside the timestamp folder
+            np.save(os.path.join(plot_data_dir, 'rewards.npy'), np.array(reward_history))
+            np.save(os.path.join(plot_data_dir, 'actions.npy'), np.array(action_history))
+            np.save(os.path.join(plot_data_dir, 'crashes.npy'), np.array(crash_history))
+            np.save(os.path.join(plot_data_dir, 'epsilons.npy'), np.array(epsilon_history))
             
             print(f"Model and logs saved at episode {episode}")
             print(f"  -> Model: {os.path.abspath(model_path)}")
-            print(f"  -> Data folder: {os.path.abspath(plot_data_dir)}")
+            print(f"  -> Run Folder: {os.path.abspath(plot_data_dir)}")
 
     # Final cleanup
     print("Training completed.")
