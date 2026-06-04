@@ -1,69 +1,74 @@
 import rclpy
-from rclpy.node import Node
-import numpy as np
 import torch
 import os
+import argparse
+from pathlib import Path
 from .gazebo_env import GazeboEnv
 from .agents.DDQN_agent import QNetwork, STATE_SIZE, ACTION_SIZE
 
-# Note: We create a test class that inherits from Node to natively handle ROS 2 parameters
-class SkidbotTestManager(Node):
-    def __init__(self):
-        super().__init__('skidbot_test_manager')
-        
-        # Declare ROS 2 parameters with their default values
-        self.declare_parameter('model_path', 'models/ddqn_skidbot_ep3000.pth')
-        self.declare_parameter('num_test_episodes', 5)
-        self.declare_parameter('max_steps_per_episode', 500)
-        
-        # Note: The 'test_world' parameter is usually passed to the Gazebo launch file, 
-        # but we declare it here in case your logic or logs need to track it.
-        self.declare_parameter('test_world', 'map2.world')
+def resolve_model_path(model_path_hint: str) -> str | None:
+    """Resolve a usable model path from an explicit file, a directory, or the latest run."""
+    candidate = Path(model_path_hint).expanduser()
 
-        # Retrieve the actual values (defaults or passed from command line)
-        self.model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        self.num_episodes = self.get_parameter('num_test_episodes').get_parameter_value().integer_value
-        self.max_steps = self.get_parameter('max_steps_per_episode').get_parameter_value().integer_value
-        self.test_world = self.get_parameter('test_world').get_parameter_value().string_value
+    if candidate.is_file():
+        return str(candidate)
+
+    if candidate.is_dir():
+        checkpoint_files = sorted(candidate.rglob('*.pth'), key=lambda path: path.stat().st_mtime)
+        if checkpoint_files:
+            return str(checkpoint_files[-1])
+
+    models_dir = Path('models')
+    if models_dir.exists():
+        checkpoint_files = sorted(models_dir.rglob('*.pth'), key=lambda path: path.stat().st_mtime)
+        if checkpoint_files:
+            return str(checkpoint_files[-1])
+
+    return None
 
 def main():
+    parser = argparse.ArgumentParser(description="Skidbot DDQN Testing Node")
+    parser.add_argument('--model_path', type=str, default='', help='Path to the .pth model or directory')
+    parser.add_argument('--speed', type=float, default=0.3, help='Linear velocity for the robot')
+    parser.add_argument('--episodes', type=int, default=5, help='Number of test episodes to run')
+    parser.add_argument('--max_steps', type=int, default=30000, help='Max steps per episode')
+    parser.add_argument('--lock_step', type=bool, default=False, help='Enable physics lock-step')
+    
+    args, _ = parser.parse_known_args()
+    
+    resolved_model_path = resolve_model_path(args.model_path)
+
+    # Initialize ROS 2, Gazebo environment and load the trained model
     rclpy.init()
-    
-    # Initialize the test parameter manager and the Gazebo environment
-    test_manager = SkidbotTestManager()
-    env = GazeboEnv()
-    
+    env = GazeboEnv(linear_speed=args.speed, lock_step=args.lock_step)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"\n[TEST] Using device: {device}")
-    print(f"[TEST] Configured world: {test_manager.test_world}")
-    print(f"[TEST] Total episodes: {test_manager.num_episodes}")
-    print(f"[TEST] Max steps per episode: {test_manager.max_steps}")
+    print(f"[TEST] Linear speed: {args.speed}")
+    print(f"[TEST] Lock-step enabled: {args.lock_step}")
+    print(f"[TEST] Total episodes: {args.episodes}")
     
     # Configure the neural network architecture
     policy_net = QNetwork(STATE_SIZE, ACTION_SIZE).to(device)
     
-    # Load weights from the dynamic path retrieved from parameters
-    if os.path.exists(test_manager.model_path):
-        print(f"[TEST] Loading model from: {test_manager.model_path}")
-        policy_net.load_state_dict(torch.load(test_manager.model_path, map_location=device))
+    # Load weights
+    if resolved_model_path and os.path.exists(resolved_model_path):
+        print(f"[TEST] Loading model from: {resolved_model_path}")
+        policy_net.load_state_dict(torch.load(resolved_model_path, map_location=device))
         policy_net.eval()
     else:
-        print(f"[TEST] Error: The model file '{test_manager.model_path}' does not exist.")
+        print("[TEST] Error: No valid model checkpoint was found.")
         env.destroy_node()
-        test_manager.destroy_node()
         rclpy.shutdown()
         return
 
     print("\n--- Starting Skidbot Test Phase ---")
-
-    for episode in range(1, test_manager.num_episodes + 1):
+    for episode in range(1, args.episodes + 1):
         state, start_coords = env.reset()
         episode_reward = 0
         steps = 0
         
         print(f"\nStarting Test Episode {episode}...")
-
-        for step in range(test_manager.max_steps):
+        for step in range(args.max_steps):
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
             
             with torch.no_grad():
@@ -84,7 +89,6 @@ def main():
 
     print("\nTest phase completed.")
     env.destroy_node()
-    test_manager.destroy_node()
     rclpy.shutdown()
 
 if __name__ == '__main__':

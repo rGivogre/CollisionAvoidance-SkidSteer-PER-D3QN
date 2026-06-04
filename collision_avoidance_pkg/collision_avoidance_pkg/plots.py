@@ -42,10 +42,10 @@ def plot_convergence(rewards, save_dir):
     plt.figure(figsize=(10, 5))
     plt.plot(rewards, color='royalblue', alpha=0.3, label='Raw Episode Reward')
     
-    window_size = 100
+    window_size = 500
     if len(rewards) >= window_size:
         moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
-        plt.plot(range(window_size-1, len(rewards)), moving_avg, color='crimson', linewidth=2, label='Moving Avg (100 Ep)')
+        plt.plot(range(window_size-1, len(rewards)), moving_avg, color='crimson', linewidth=2, label='Moving Avg (500 Ep)')
         
     plt.title('DQN Learning Convergence Curve')
     plt.xlabel('Training Epochs (Episodes)')

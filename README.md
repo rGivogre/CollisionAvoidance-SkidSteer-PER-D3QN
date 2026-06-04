@@ -76,14 +76,32 @@ ros2 launch collision_avoidance_pkg sim_environment.launch.py gui:=true world_fi
 ```
 
 ### Terminal 2 (Run the Agent):
-Wait for Gazebo to fully load the physics server in the first terminal, then run:
+Wait for Gazebo to fully load the physics server in the first terminal, then run one of the following commands depending on your goal.
+
+**1. Random Agent (Baseline)**
+Start an agent that picks random actions to test the environment physics:
 ```bash
 ros2 run collision_avoidance_pkg random_agent
 ```
 
+**2. Train DDQN Agent**
+Start training a new Deep Double Q-Network model. 
 ```bash
-ros2 run collision_avoidance_pkg train_ddqn
+ros2 run collision_avoidance_pkg train_ddqn --speed 0.3 --learning_rate 0.00025
 ```
+*Note: This script uses `argparse`, so the command passes standard Python arguments directly to the executable.*
+
+**3. Test a Trained Model**
+Evaluate a pre-trained model checkpoint in the environment (visually smooth, without lock-step by default).
+```bash
+ros2 run collision_avoidance_pkg test --model_path "" --speed 0.3 --episodes 5 --lock_step false
+```
+**Test Arguments Available:**
+- `model_path`: Path to a specific `.pth` file, or a directory. If left empty `""`, it automatically auto-resolves to the newest model in the `models/` directory.
+- `speed` *(default: 0.3)*: Linear velocity for the robot.
+- `episodes` *(default: 5)*: How many episodes to run before exiting.
+- `max_steps` *(default: 30000)*: Maximum number of steps per episode.
+- `lock_step` *(default: false)*: Set to `true` to freeze physics at every step (like during training), or `false` for smooth real-time visual evaluation.
 
 ```bash
 ros2 run collision_avoidance_pkg test

@@ -99,12 +99,14 @@ class DDQNAgent:
         # Calculate target Q-values i.e., the values we want our current Q-values to move towards
         expected_Q = rewards + (GAMMA * next_Q * (1 - dones))           #(dimensions: [batch_size, 1])
 
-        # Calculate Loss (Mean Squared Error)
-        loss = nn.MSELoss()(expected_Q.detach(), curr_Q)    # expected - curr is the TD error
+        # Calculate Loss (Smooth L1 Loss / Huber Loss)
+        loss = nn.SmoothL1Loss()(expected_Q.detach(), curr_Q)   # expected - curr is the TD error
 
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)  # Gradient clipping to prevent exploding gradients
+        
         self.optimizer.step()
 
         self.step_count += 1
