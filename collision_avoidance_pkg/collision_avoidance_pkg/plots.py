@@ -47,7 +47,7 @@ def plot_convergence(rewards, save_dir):
         moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
         plt.plot(range(window_size-1, len(rewards)), moving_avg, color='crimson', linewidth=2, label='Moving Avg (500 Ep)')
         
-    plt.title('DQN Learning Convergence Curve')
+    plt.title('DDQN Learning Convergence Curve')
     plt.xlabel('Training Epochs (Episodes)')
     plt.ylabel('Accumulated Rewards')
     plt.grid(True, linestyle='--', alpha=0.6)
@@ -155,7 +155,7 @@ def plot_crashes_heatmap(crashes, save_dir):
     plt.show()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Plot DQN training data.")
+    parser = argparse.ArgumentParser(description="Plot DDQN training data.")
     parser.add_argument('--run', type=str, default=None, help="Name of the timestamp folder(e.g., '20260528_153022'). If omitted, loads the latest.")
     args = parser.parse_args()
 

@@ -25,13 +25,11 @@ git clone https://github.com/odobot/ROS2-SKID-STEER-DRIVE-ROBOT.git
 ```
 
 ### 3. Adding the LiDAR Sensor
-The original skid-steer repository does not come with a LiDAR sensor configured. We have provided an updated setup file in our repository (`xacro/skid.xacro`). After cloning both repositories, you must overwrite the original robot description file with ours:
+The original skid-steer repository does not include the LiDAR setup we need for this environment. The repository provides updated `xacro` files—`skid.xacro` and `gazebo_control.xacro`—that add the sensor and tune the robot mass, wheel properties, and friction settings for Gazebo.
 
-```bash
-cp ~/ros_project_ws/src/CollisionAvoidance-RL/xacro/skid.xacro ~/ros_project_ws/src/ROS2-SKID-STEER-DRIVE-ROBOT/src/skid_bot/description/skid.xacro
-```
+After cloning the robot repository, replace the original robot description files with the versions from this repository so the simulation uses the correct model, sensor configuration, and Gazebo drive plugin settings.
 
-*(Note: After completing these steps, proceed to build the workspace and open a new terminal to source it).*
+*(After this change, rebuild the workspace and open a new terminal to source it.)*
 
 ## Building the Workspace
 
