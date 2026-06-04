@@ -1,3 +1,4 @@
+import json
 import rclpy
 import numpy as np
 import torch
@@ -29,15 +30,32 @@ def main():
     # Setup project directories for saving models and plot data (assuming execution from repo root)
     models_base_dir = 'models'
     plot_data_base_dir = 'plot_data'
-    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') 
-    run_name = run_timestamp + f"_v{speed}_lr{lr}"
+    run_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    run_name = run_timestamp
     
     # Create subfolders for the specific run using the timestamp
     models_dir = os.path.join(models_base_dir, run_name)
     plot_data_dir = os.path.join(plot_data_base_dir, run_name)
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(plot_data_dir, exist_ok=True)
-    
+
+    run_config = {
+        'run_name': run_name,
+        'start_time': run_timestamp,
+        'agent_key': 'DDQN',
+        'speed': speed,
+        'learning_rate': lr,
+        'max_steps_per_episode': MAX_STEPS_PER_EPISODE,
+        'save_every': SAVE_EVERY,
+        'models_dir': os.path.abspath(models_dir),
+        'plot_data_dir': os.path.abspath(plot_data_dir),
+        'checkpoint_template': f"ddqn_ep{{episode:04d}}.pth",
+    }
+
+    for config_dir in [models_dir, plot_data_dir]:
+        with open(os.path.join(config_dir, 'runconfig.json'), 'w') as config_file:
+            json.dump(run_config, config_file, indent=2)
+
     reward_history = []
     action_history = []
     crash_history = []
@@ -91,7 +109,7 @@ def main():
 
         # Save the model and log data
         if (episode % SAVE_EVERY  == 0):
-            model_path = os.path.join(models_dir, f"ddqn_ep{episode}_maxstep{MAX_STEPS_PER_EPISODE}.pth")
+            model_path = os.path.join(models_dir, f"ddqn_ep{episode:04d}.pth")
             torch.save(agent.policy_net.state_dict(), model_path)
             
             # Save data arrays for plot.py with standard names inside the timestamp folder
