@@ -4,22 +4,24 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from rclpy.qos import qos_profile_sensor_data
 from gazebo_msgs.srv import SetEntityState
+from std_srvs.srv import Empty
 from nav_msgs.msg import Odometry
 from rclpy.parameter import Parameter
 import numpy as np
 import random
 import math
+import time
 
 # Environment Constants, revise them as needed for our specific Gazebo world and robot configuration
 ROBOT_NAME = 'skid_bot'         # Name of the entity in Gazebo
 MAX_LIDAR_RANGE = 10          
 NUM_LIDAR_RAYS = 50             # State size
-COLLISION_DISTANCE = 0.40       # If an obstacle is closer than this, it's considered a collision (in meters)
+COLLISION_DISTANCE = 0.70       # If a wall is closer than this distance, the robot won't be kinematically able to avoid it, so we consider it a collision.
 ANGULAR_SPEED_BASE = -0.8       
 ANGULAR_SPEED_STEP = 0.16       
 
 class GazeboEnv(Node):
-    def __init__(self, linear_speed=0.3):
+    def __init__(self, linear_speed=0.3, lock_step=False):
         super().__init__('gazebo_env_node', allow_undeclared_parameters=True, parameter_overrides=[Parameter('use_sim_time', Parameter.Type.BOOL, True)])
         # use_sim_time is crucial for synchronizing with Gazebo's clock, especially when running in fast mode during training. It ensures that all time-based operations (like waiting for sensor updates) are aligned with the simulation time rather than real-world time.
 
@@ -33,6 +35,13 @@ class GazeboEnv(Node):
         while not self.set_state_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for /gazebo/set_entity_state service...')
             
+        # Service clients for synchronizing physics (Lock-step execution)
+        self.pause_client = self.create_client(Empty, '/pause_physics')
+        self.unpause_client = self.create_client(Empty, '/unpause_physics')
+        while not self.pause_client.wait_for_service(timeout_sec=1.0) or \
+              not self.unpause_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Waiting for /pause_physics and /unpause_physics services...')
+
         # Add Subscriber for Odometry to track position
         self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, qos_profile_sensor_data)
 
@@ -42,8 +51,15 @@ class GazeboEnv(Node):
 
         # Rectangular safe zones for spawn: (x_min, x_max, y_min, y_max)
         self.safe_spawn_zones = [
-            (1.806280, 9.096520, 2.245540, 4.153355),    
-            (-21.616300, -19.892700, 3.597740, 10.221505)
+            (8.520232, 9.680581, 10.607340, 12.003513),
+            (8.352893, 9.725218, 2.331839, 3.795091),
+            (2.161592, 3.129258, 2.188802, 3.355060),
+            (-5.416000, -4.454008, -1.920677, -0.985938),
+            (-11.184471, -10.414239, -15.415749, -14.502028),
+            (-14.310157, -13.272814, -2.444438, -1.000931),
+            (-21.783125, -20.317483, 3.513993, 4.965386),
+            (-21.785237, -20.187068, 8.942143, 10.289129),
+            (-0.564794, -0.273878, 11.295714, 11.472330)
         ]
         
         # Initialize coordinate tracking variables
@@ -52,6 +68,7 @@ class GazeboEnv(Node):
         self.current_y = 0.0
         
         self.linear_speed = linear_speed
+        self.lock_step = lock_step
 
         self.new_scan_received = False
     
@@ -59,15 +76,16 @@ class GazeboEnv(Node):
         """Processes LiDAR data every time it arrives."""
         # Convert measurements to a numpy array
         ranges = np.array(msg.ranges)
-        
-        # The laser sometimes returns "infinite" if it sees nothing. Limit to max range.
-        ranges[np.isinf(ranges)] = MAX_LIDAR_RANGE
-        ranges[np.isnan(ranges)] = MAX_LIDAR_RANGE
-        
+
         # Extract uniformly distributed measurements
         # np.linspace selects NUM_LIDAR_RAYS evenly spaced indices from the array's total length
         indices = np.linspace(0, len(ranges) - 1, NUM_LIDAR_RAYS, dtype=int)
         raw_state = ranges[indices]
+
+        # The laser sometimes returns "infinite" if it sees nothing. Limit to max range.
+        raw_state[np.isinf(raw_state)] = MAX_LIDAR_RANGE
+        raw_state[np.isnan(raw_state)] = MAX_LIDAR_RANGE
+    
         
         # Check if a collision occurred using raw distance (before normalization)
         if np.min(raw_state) < COLLISION_DISTANCE:
@@ -77,15 +95,49 @@ class GazeboEnv(Node):
             
         # Normalize to [0, 1] by dividing by max range, for better neural network performance
         self.state = raw_state / MAX_LIDAR_RANGE
-        self.new_scan_received = True
+        self.new_scan_received = True   # Flag to indicate that a new scan has been processed, used for synchronization in step() and reset()
 
     def odom_callback(self, msg):
         """Callback to constantly update current global position."""
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
 
+    def _drain_lidar_queue(self):
+        """Actively flush any old LiDAR messages still in the ROS 2 queue. Uses timeout_sec=0.0 to process messages instantly and return."""
+        while True:
+            self.new_scan_received = False
+            rclpy.spin_once(self, timeout_sec=0.0)
+            if not self.new_scan_received:
+                break
+
+    def _wait_for_new_scan(self, required_scans=1):
+        """Blocks execution until 'required_scans' new LiDAR scans are received, with a Watchdog."""
+        for _ in range(required_scans):
+            self.new_scan_received = False
+            start_time = time.time()
+
+            while rclpy.ok() and not self.new_scan_received:
+                rclpy.spin_once(self, timeout_sec=0.001)
+
+                if time.time() - start_time > 2.0: # Watchdog timeout of 2 seconds, which is generous for a 10Hz LiDAR. If we hit this, it likely means the physics engine is paused and we need to unpause it to get new scans.
+                    self.get_logger().warn("Watchdog trigger: LiDAR timeout! Forcing physics unpause...")
+                    self._unpause_physics()
+                    start_time = time.time()  # Reset watchdog timer after unpausing
+
+    def _pause_physics(self):
+        """Freezes the Gazebo physics engine."""
+        self.pause_client.call_async(Empty.Request())
+
+    def _unpause_physics(self):
+        """Unfreezes the Gazebo physics engine."""
+        self.unpause_client.call_async(Empty.Request())
+    
+
     def step(self, action):
         """Receives the action (0-10), moves the robot and calculates the reward."""
+
+        if self.lock_step:
+            self._unpause_physics() # Let the physics engine run to execute our action
         
         # Move the robot using parameterized speeds (paper's formula)
         vel_cmd = Twist()
@@ -93,12 +145,14 @@ class GazeboEnv(Node):
         vel_cmd.angular.z = ANGULAR_SPEED_BASE + (ANGULAR_SPEED_STEP * action)
         
         self.cmd_vel_pub.publish(vel_cmd)
+        self._drain_lidar_queue()   # QUEUE DRAIN: Flush old frames generated before the command had a physical effect
         
-        # Advance time in ROS 2 until a new sensor reading is received (Event-Driven)
-        self.new_scan_received = False
-        while rclpy.ok() and not self.new_scan_received:
-            rclpy.spin_once(self, timeout_sec=0.01)
-        
+        self._wait_for_new_scan(required_scans=2)   # Wait for two new scans to ensure the robot has moved enough to reflect the action's consequences in the LiDAR data.
+    
+        # Freeze the gazebo universe exactly when we get our observation
+        if self.lock_step:
+            self._pause_physics()   # This gives PyTorch unlimited real-world time to compute gradients safely.
+
         # Calculate the reward
         if self.collision:
             reward = -1000
@@ -113,51 +167,60 @@ class GazeboEnv(Node):
     
     def reset(self):
         """Resets the robot teleporting it to a random safe location and returns the initial state."""
+
+        if self.lock_step:
+            self._unpause_physics()     # to allow the teleport drop and stabilization
+        
         # Stop the robot's movement
         stop_cmd = Twist()
         self.cmd_vel_pub.publish(stop_cmd)
         
-        self.new_scan_received = False
-        while rclpy.ok() and not self.new_scan_received:
-            rclpy.spin_once(self, timeout_sec=0.01)
+        MAX_SPAWN_ATTEMPTS = 10
+        SAFE_SPAWN_THRESHOLD = COLLISION_DISTANCE + 0.15
 
-        # Choose a random spawn zone from the predefined safe areas
-        x_min, x_max, y_min, y_max = random.choice(self.safe_spawn_zones)
-        
-        # Make the spawn continuous across the area and randomize the orientation
-        x = random.uniform(x_min, x_max)
-        y = random.uniform(y_min, y_max)
-        yaw = random.uniform(-math.pi, math.pi)
-        
-        # Create the request to teleport the robot
-        req = SetEntityState.Request()
-        req.state.name = ROBOT_NAME
-        req.state.reference_frame = 'world'
-        
-        # Set the robot's position and orientation
-        req.state.pose.position.x = float(x)
-        req.state.pose.position.y = float(y)
-        req.state.pose.position.z = 0.01    # Slightly above the ground to avoid spawning issues
-        req.state.pose.orientation.x = 0.0
-        req.state.pose.orientation.y = 0.0
-        req.state.pose.orientation.z = math.sin(yaw / 2.0)
-        req.state.pose.orientation.w = math.cos(yaw / 2.0)
-        
-        # Call the service to teleport the robot
-        future = self.set_state_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
+        for attempt in range(MAX_SPAWN_ATTEMPTS):
+             # Choose a random spawn zone from the predefined safe areas
+            x_min, x_max, y_min, y_max = random.choice(self.safe_spawn_zones)
 
-        # QUEUE DRAIN (Best Practice): 
-        # Actively flush any old LiDAR messages still in the queue after a crash
-        for _ in range(10):
-            rclpy.spin_once(self, timeout_sec=0.01)
+            # Make the spawn continuous across the area and randomize the orientation
+            x = random.uniform(x_min, x_max)
+            y = random.uniform(y_min, y_max)
+            yaw = random.uniform(-math.pi, math.pi)
+            
+            # Create the request to teleport the robot
+            req = SetEntityState.Request()
+            req.state.name = ROBOT_NAME
+            req.state.reference_frame = 'world'
+            
+            # Set the robot's position and orientation
+            req.state.pose.position.x = float(x)
+            req.state.pose.position.y = float(y)
+            req.state.pose.position.z = 0.16    # Spawn the base_link above the ground, given that robot's wheels have a radius of 0.15. 
+            req.state.pose.orientation.x = 0.0
+            req.state.pose.orientation.y = 0.0
+            req.state.pose.orientation.z = math.sin(yaw / 2.0)
+            req.state.pose.orientation.w = math.cos(yaw / 2.0)
+            
+            # Call the service to teleport the robot
+            future = self.set_state_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
 
-        # Wait for a fresh scan at the new location
-        self.new_scan_received = False
-        while rclpy.ok() and not self.new_scan_received:
-            rclpy.spin_once(self, timeout_sec=0.01)
+            self._drain_lidar_queue()   # Actively flush any lingering messages from the previous crash
+
+            self._wait_for_new_scan(required_scans=5)   # Ensure the robot is fully settled in the new position by waiting for 5 scans, approximately 0.5 seconds at 10Hz. This helps to avoid any residual effects from the teleportation and ensures the state is stable before starting the episode.
+            
+            raw_min_distance = np.min(self.state ) * MAX_LIDAR_RANGE
+            if raw_min_distance >= SAFE_SPAWN_THRESHOLD:
+                break  # Found a safe spawn point, exit the loop
+            else:
+                self.get_logger().warn(f"Spawn attempt {attempt + 1}: Unsafe spawn point detected (min distance: {raw_min_distance:.2f}m). Retrying...")
+        else:
+            self.get_logger().error("Failed to find a safe spawn point after multiple attempts. Proceeding with the last attempted spawn location, but this may lead to immediate collisions.")
         
         self.collision = False
         start_coords = (self.current_x, self.current_y)
         
+        if self.lock_step:
+            self._pause_physics()   
+
         return self.state.copy(), start_coords

@@ -24,8 +24,8 @@ def setup_gazebo_world(context, *args, **kwargs):
     with open(original_world_path, 'r') as f:
         world_content = f.read()
 
-    # Apply the speedup logic (0 = unlimited speed, 1000 = RTF 1.0)
-    update_rate = '0' if speedup == 'true' else '1000'
+    # Apply the speedup logic (10500 = RTF capped at 10.5, 1000 = RTF capped at 1.0)
+    update_rate = '10500' if speedup == 'true' else '1000'
     
     # Replace the <real_time_update_rate> tag natively in the XML string
     world_content = re.sub(
@@ -96,7 +96,7 @@ def generate_launch_description():
             '-topic', 'robot_description', 
             '-x', '2.1',  
             '-y', '3.0',  
-            '-z', '0.01',
+            '-z', '0.16',
             '-timeout', '100'    
         ],
         output='screen',
