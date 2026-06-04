@@ -10,7 +10,7 @@ import termios
 from .gazebo_env import GazeboEnv
 
 # Match your RL setup configuration
-LINEAR_SPEED = 0.5  # Constant forward velocity (meters/second)
+LINEAR_SPEED = 0.3  # Constant forward velocity (meters/second)
 
 msg = """
 ======================================================
@@ -74,6 +74,9 @@ class ActionTester(Node):
                 elif key == '0':
                     action_index = 9 # Map to 0-indexed value (9)
                 
+                elif key == '\'':
+                    action_index = 10 
+                
                 # Spacebar or 's' commands an immediate stop
                 elif key == ' ' or key == 's':
                     twist = Twist()
@@ -99,7 +102,10 @@ class ActionTester(Node):
                     twist = Twist()
                     
                     # Keep a baseline forward movement so you can observe the turn radius
-                    twist.linear.x = LINEAR_SPEED
+                    if action_index == 10 or action_index == 0:  # For the most extreme turns, reduce forward speed to better visualize the rotation
+                        twist.linear.x = 0.0  # Action 11: Pure rotation in place (no forward movement)
+                    else:
+                        twist.linear.x = LINEAR_SPEED
                     
                     # Exact math formula from your plot labels: round(-0.8 + 0.16 * action_index, 2)
                     twist.angular.z = -0.8 + (0.16 * action_index)
