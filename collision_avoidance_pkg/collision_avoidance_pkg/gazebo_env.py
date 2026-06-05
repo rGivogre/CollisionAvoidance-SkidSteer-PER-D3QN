@@ -13,10 +13,11 @@ import math
 import time
 
 # Environment Constants, revise them as needed for our specific Gazebo world and robot configuration
-ROBOT_NAME = 'skid_bot'         # Name of the entity in Gazebo
+ROBOT_NAME = 'skid_bot'             # Name of the entity in Gazebo
 MAX_LIDAR_RANGE = 10          
-NUM_LIDAR_RAYS = 50             # State size
-COLLISION_DISTANCE = 0.70       # If a wall is closer than this distance, the robot won't be kinematically able to avoid it, so we consider it a collision.
+NUM_LIDAR_RAYS = 50                 # State size
+FRONT_COLLISION_THRESHOLD = 0.95    # Derived from max sweep radius (0.922m) + tolerance
+SIDE_COLLISION_THRESHOLD = 0.45     # Robot half-width (0.4m) + 0.05m tolerance
 ANGULAR_SPEED_BASE = -0.8       
 ANGULAR_SPEED_STEP = 0.16       
 
@@ -29,6 +30,8 @@ class GazeboEnv(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, '/demo/cmd_vel', 10)
         # Subscriber on /scan to read the LiDAR scan
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile_sensor_data)
+        # Subscriber for Odometry to track position
+        self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, qos_profile_sensor_data)
 
         # Service client to teleport the robot (SetEntityState)
         self.set_state_client = self.create_client(SetEntityState, '/gazebo/set_entity_state')
@@ -41,9 +44,6 @@ class GazeboEnv(Node):
         while not self.pause_client.wait_for_service(timeout_sec=1.0) or \
               not self.unpause_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Waiting for /pause_physics and /unpause_physics services...')
-
-        # Add Subscriber for Odometry to track position
-        self.odom_sub = self.create_subscription(Odometry, '/demo/odom', self.odom_callback, qos_profile_sensor_data)
 
         # Internal state variables
         self.state = np.zeros(NUM_LIDAR_RAYS)
@@ -73,7 +73,7 @@ class GazeboEnv(Node):
         self.new_scan_received = False
     
     def scan_callback(self, msg):
-        """Processes LiDAR data every time it arrives."""
+        """Processes LiDAR data every time it arrives and evaluates collision status."""
         # Convert measurements to a numpy array
         ranges = np.array(msg.ranges)
 
@@ -87,8 +87,13 @@ class GazeboEnv(Node):
         raw_state[np.isnan(raw_state)] = MAX_LIDAR_RANGE
     
         
-        # Check if a collision occurred using raw distance (before normalization)
-        if np.min(raw_state) < COLLISION_DISTANCE:
+        # LiDAR span: 270 degrees (-135 to +135). Resolution ~5.4 deg/ray.
+        right_rays = raw_state[:19]     # -135 to -32 degrees
+        front_rays = raw_state[19:31]   # -32 to +32 degrees
+        left_rays = raw_state[31:]      # +32 to +135 degrees
+
+        # Evaluate Inevitable Collision States
+        if (np.min(front_rays) < FRONT_COLLISION_THRESHOLD) or (np.min(left_rays) < SIDE_COLLISION_THRESHOLD) or (np.min(right_rays) < SIDE_COLLISION_THRESHOLD):
             self.collision = True
         else:
             self.collision = False
@@ -176,7 +181,7 @@ class GazeboEnv(Node):
         self.cmd_vel_pub.publish(stop_cmd)
         
         MAX_SPAWN_ATTEMPTS = 10
-        SAFE_SPAWN_THRESHOLD = COLLISION_DISTANCE + 0.15
+        SAFE_SPAWN_THRESHOLD = FRONT_COLLISION_THRESHOLD + 0.15
 
         for attempt in range(MAX_SPAWN_ATTEMPTS):
              # Choose a random spawn zone from the predefined safe areas
