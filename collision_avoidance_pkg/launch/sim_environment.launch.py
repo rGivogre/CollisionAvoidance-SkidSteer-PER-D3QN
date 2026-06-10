@@ -24,8 +24,8 @@ def setup_gazebo_world(context, *args, **kwargs):
     with open(original_world_path, 'r') as f:
         world_content = f.read()
 
-    # Apply the speedup logic (10500 = RTF capped at 10.5, 1000 = RTF capped at 1.0)
-    update_rate = '10500' if speedup == 'true' else '1000'
+    # Apply the speedup logic (7000 -> RTF capped at 7.0, 1000 -> RTF capped at 1.0)
+    update_rate = '7000' if speedup == 'true' else '1000'
     
     # Replace the <real_time_update_rate> tag natively in the XML string
     world_content = re.sub(

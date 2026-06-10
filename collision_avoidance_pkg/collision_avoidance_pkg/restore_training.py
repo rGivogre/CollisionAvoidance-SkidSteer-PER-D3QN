@@ -237,9 +237,9 @@ def main():
 
         agent.update_epsilon()
 
-        formatted_crash = f"({crash_history[-1][0]:.2f}, {crash_history[-1][1]:.2f})" if done else 'No'
+        formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
         print(f"Episode {episode:04d}/{args.target_episodes} | Reward: {episode_reward:8.1f} | "
-              f"ε: {agent.epsilon:.6f} | Crash: {formatted_crash}")
+              f"ε: {agent.epsilon:.3f} | Crash: {formatted_crash}")
 
         # Periodic checkpoint save
         if episode % save_every == 0 or episode == args.target_episodes:
