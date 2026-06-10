@@ -47,8 +47,8 @@ def main():
         'learning_rate': lr,
         'max_steps_per_episode': MAX_STEPS_PER_EPISODE,
         'save_every': SAVE_EVERY,
-        'models_dir': os.path.abspath(models_dir),
-        'plot_data_dir': os.path.abspath(plot_data_dir),
+        'models_dir': models_dir,
+        'plot_data_dir': plot_data_dir,
         'checkpoint_template': f"ddqn_ep{{episode:04d}}.pth",
     }
 
