@@ -137,6 +137,82 @@ class GazeboEnv(Node):
         """Unfreezes the Gazebo physics engine."""
         self.unpause_client.call_async(Empty.Request())
     
+    def _compute_reward_lane_centrality(self, normalized_state):
+        """
+        Reward function optimizing for lane centrality.
+        The robot is rewarded for:
+        - Staying centered (equal distance on left/right)
+        - Keeping front clear
+        - Maintaining safe clearance overall
+        
+        Args:
+            normalized_state: LiDAR state normalized to [0, 1]
+        
+        Returns:
+            reward: scalar float
+        """
+        # Extract zones: right (0-18), front (19-30), left (31-49)
+        right_rays = normalized_state[:19]
+        front_rays = normalized_state[19:31]
+        left_rays = normalized_state[31:]
+        
+        # Compute zone statistics
+        right_mean = np.mean(right_rays)
+        front_mean = np.mean(front_rays)
+        left_mean = np.mean(left_rays)
+        
+        # 1. Base survival reward (small)
+        base_reward = 0.1
+        
+        # 2. Lane centrality: reward symmetric left/right clearance
+        # Compare left vs right: lower difference = more centered
+        lr_diff = np.abs(left_mean - right_mean)  # 0 is perfect center, 1 is max asymmetry
+        centrality_reward = 0.5 * (1.0 - lr_diff)  # ranges from 0.5 (centered) to -0.5 (highly asymmetric)
+        
+        # 3. Front clearance bonus (front rays should be clear)
+        front_bonus = 0.3 * front_mean
+        
+        # 4. Overall safety: penalize if any zone is dangerously close
+        min_clearance = np.min(normalized_state)
+        if min_clearance < 0.15:  # Approaching collision threshold
+            safety_penalty = -0.5
+        elif min_clearance < 0.25:
+            safety_penalty = -0.2
+        else:
+            safety_penalty = 0.0
+        
+        # Combine components
+        reward = base_reward + centrality_reward + front_bonus + safety_penalty
+        
+        return reward
+    
+    def _compute_reward_simple_clearance(self, normalized_state):
+        """
+        Simple reward based purely on average clearance.
+        Useful as baseline for comparison.
+        
+        Args:
+            normalized_state: LiDAR state normalized to [0, 1]
+        
+        Returns:
+            reward: scalar float
+        """
+        mean_clearance = np.mean(normalized_state)
+        min_clearance = np.min(normalized_state)
+        
+        base_reward = 0.1
+        clearance_reward = 0.5 * mean_clearance
+        
+        if min_clearance < 0.15:
+            safety_penalty = -0.5
+        elif min_clearance < 0.25:
+            safety_penalty = -0.2
+        else:
+            safety_penalty = 0.0
+        
+        reward = base_reward + clearance_reward + safety_penalty
+        
+        return reward
 
     def step(self, action):
         """Receives the action (0-10), moves the robot and calculates the reward."""
@@ -158,13 +234,14 @@ class GazeboEnv(Node):
         if self.lock_step:
             self._pause_physics()   # This gives PyTorch unlimited real-world time to compute gradients safely.
 
-        # Calculate the reward
+        # Calculate the reward using the selected reward function
         if self.collision:
-            reward = -1000
+            reward = -30.0  # Moderate penalty for collision (not extreme like -1000)
             done = True
             crash_coords = (self.current_x, self.current_y)
         else:
-            reward = 5
+            # Use lane centrality reward (can be swapped to simple_clearance for testing)
+            reward = self._compute_reward_lane_centrality(self.state)
             done = False
             crash_coords = None
             
