@@ -105,7 +105,7 @@ def main():
 
         # Show progress 
         formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
-        print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.3f}, Crash: {formatted_crash}")
+        print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward:.2f}, Epsilon: {agent.epsilon:.3f}, Crash: {formatted_crash}")
 
         # Save the model and log data
         if (episode % SAVE_EVERY  == 0):
