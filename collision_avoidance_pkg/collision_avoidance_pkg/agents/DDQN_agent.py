@@ -14,7 +14,7 @@ GAMMA = 0.99
 LEARNING_RATE = 2.5e-4
 MIN_EPSILON = 0.05
 DECAY_RATE_BETA = 0.999  
-TARGET_UPDATE_FREQ = 1000 # Steps between target network updates
+TAU = 0.005                 # for soft update of target network
 
 class QNetwork(nn.Module):
     """
@@ -36,7 +36,6 @@ class QNetwork(nn.Module):
 class DDQNAgent:
     def __init__(self, learning_rate=LEARNING_RATE):
         self.train_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         self.learning_rate = learning_rate
 
         # Initialize Policy Network and Target Network
@@ -48,12 +47,10 @@ class DDQNAgent:
         
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.learning_rate)
     
-
-        self.memory = deque(maxlen=100000)  # Experience Replay Memory
+        self.memory = deque(maxlen=75000)  # Experience Replay Memory
         
         # Epsilon-greedy parameters
         self.epsilon = 1.0
-        self.step_count = 0
 
     def get_action(self, state):
         """ Selects an action using the epsilon-greedy policy. """
@@ -109,11 +106,12 @@ class DDQNAgent:
         
         self.optimizer.step()
 
-        self.step_count += 1
-        
-        # Replace target network parameters every N steps
-        if self.step_count % TARGET_UPDATE_FREQ == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        # Soft update of target network
+        target_net_state_dict = self.target_net.state_dict()
+        policy_net_state_dict = self.policy_net.state_dict()
+        for key in policy_net_state_dict:
+            target_net_state_dict[key] = TAU * policy_net_state_dict[key] + (1 - TAU) * target_net_state_dict[key]
+        self.target_net.load_state_dict(target_net_state_dict)
 
     def update_epsilon(self):
         """
