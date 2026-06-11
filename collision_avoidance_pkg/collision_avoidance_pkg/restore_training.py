@@ -1,6 +1,7 @@
 import argparse
 import json
 import re
+import pickle
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +27,7 @@ def resolve_checkpoint(model_path_hint: str) -> Path | None:
             checkpoint_files = sorted(models_root.rglob('*.pth'), key=lambda path: path.stat().st_mtime)
             if checkpoint_files:
                 latest = checkpoint_files[-1]
-                print(f"✓ No model path specified. Using most recent: {latest}")
+                print(f"No model path specified. Using most recent: {latest}")
                 return latest
         return None
 
@@ -127,7 +128,7 @@ def main():
         print("Cannot restore without runconfig.json. Please provide one in the model folder.")
         return
 
-    print(f"✓ Loaded runconfig from: {resolved_checkpoint.parent / 'runconfig.json'}")
+    print(f"Loaded runconfig from: {resolved_checkpoint.parent / 'runconfig.json'}")
 
     # Resolve plot_data directory using runconfig
     plot_data_dir_key = run_config.get('plot_data_dir')
@@ -196,10 +197,29 @@ def main():
     # Load checkpoint
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_data = torch.load(resolved_checkpoint, map_location=device)
-    agent.policy_net.load_state_dict(checkpoint_data)
+    
+    # Handle both new 'full' checkpoints (model+optimizer) and old 'legacy' checkpoints (model only)
+    if isinstance(checkpoint_data, dict) and 'model_state' in checkpoint_data:
+        print("Restoring Full Checkpoint (Model weights + Optimizer state)")
+        agent.policy_net.load_state_dict(checkpoint_data['model_state'])
+        agent.optimizer.load_state_dict(checkpoint_data['optimizer_state'])
+    else:
+        print("Restoring Legacy Checkpoint (Model weights only)")
+        agent.policy_net.load_state_dict(checkpoint_data)
+        
     agent.target_net.load_state_dict(agent.policy_net.state_dict())
     agent.target_net.eval()
     agent.epsilon = resume_epsilon
+
+    # Restore Replay Buffer memory if available
+    memory_file = resolved_checkpoint.with_name(resolved_checkpoint.stem + "_memory.pkl")
+    if memory_file.exists():
+        print(f"Restoring Replay Buffer from {memory_file.name}...")
+        with open(memory_file, 'rb') as f:
+            agent.memory = pickle.load(f)
+        print(f"  -> Replay buffer restored with {len(agent.memory)} experiences.")
+    else:
+        print("! No Replay Buffer match found. Resuming with an empty memory.")
 
     # Restore training history
     reward_history = existing_rewards.tolist() if existing_rewards is not None else []
@@ -208,67 +228,106 @@ def main():
     epsilon_history = existing_epsilons.tolist() if existing_epsilons is not None else []
 
     # Training loop
-    for episode in range(current_episode + 1, args.target_episodes + 1):
-        state, start_coords = env.reset()
-        episode_reward = 0
-        episode_actions = []
+    try:
+        for episode in range(current_episode + 1, args.target_episodes + 1):
+            state, start_coords = env.reset()
+            episode_reward = 0
+            episode_actions = []
 
-        for step in range(max_steps_per_episode):
-            action_idx = agent.get_action(state)
-            episode_actions.append(action_idx)
+            for step in range(max_steps_per_episode):
+                action_idx = agent.get_action(state)
+                episode_actions.append(action_idx)
 
-            next_state, reward, done, crash_coords = env.step(action_idx)
-            agent.store_transition(state, action_idx, reward, next_state, done)
-            agent.train_step()
+                next_state, reward, done, crash_coords = env.step(action_idx)
+                agent.store_transition(state, action_idx, reward, next_state, done)
+                agent.train_step()
 
-            state = next_state
-            episode_reward += reward
+                state = next_state
+                episode_reward += reward
 
-            if done:
-                crash_history.append(crash_coords)
-                break
+                if done:
+                    crash_history.append(crash_coords)
+                    break
 
-        reward_history.append(episode_reward)
-        epsilon_history.append(agent.epsilon)
+            reward_history.append(episode_reward)
+            epsilon_history.append(agent.epsilon)
 
-        if len(episode_actions) < max_steps_per_episode:
-            episode_actions.extend([-1] * (max_steps_per_episode - len(episode_actions)))
-        action_history.append(episode_actions)
+            if len(episode_actions) < max_steps_per_episode:
+                episode_actions.extend([-1] * (max_steps_per_episode - len(episode_actions)))
+            action_history.append(episode_actions)
 
-        agent.update_epsilon()
+            agent.update_epsilon()
 
-        formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
-        print(f"Episode {episode:04d}/{args.target_episodes} | Reward: {episode_reward:8.1f} | "
-              f"ε: {agent.epsilon:.3f} | Crash: {formatted_crash}")
+            formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
+            print(f"Episode {episode:04d}/{args.target_episodes} | Reward: {episode_reward:8.1f} | "
+                  f"ε: {agent.epsilon:.3f} | Crash: {formatted_crash}")
 
-        # Periodic checkpoint save
-        if episode % save_every == 0 or episode == args.target_episodes:
-            model_path = resolved_checkpoint.parent / f"ddqn_ep{episode:04d}.pth"
-            torch.save(agent.policy_net.state_dict(), model_path)
+            # Periodic checkpoint save
+            if episode % save_every == 0 or episode == args.target_episodes:
+                model_path = resolved_checkpoint.parent / f"ddqn_ep{episode:04d}.pth"
+                checkpoint = {
+                    'model_state': agent.policy_net.state_dict(),
+                    'optimizer_state': agent.optimizer.state_dict()
+                }
+                torch.save(checkpoint, model_path)
+                
+                # Save Replay Buffer
+                memory_path = resolved_checkpoint.parent / f"ddqn_ep{episode:04d}_memory.pkl"
+                with open(memory_path, 'wb') as f:
+                    pickle.dump(agent.memory, f)
 
-            start_idx = len(existing_rewards) if existing_rewards is not None else 0
-            existing_rewards = append_and_save(rewards_path, existing_rewards, reward_history[start_idx:])
+                start_idx = len(existing_rewards) if existing_rewards is not None else 0
+                existing_rewards = append_and_save(rewards_path, existing_rewards, reward_history[start_idx:])
 
-            start_idx = len(existing_actions) if existing_actions is not None else 0
-            existing_actions = append_and_save(actions_path, existing_actions, action_history[start_idx:])
+                start_idx = len(existing_actions) if existing_actions is not None else 0
+                existing_actions = append_and_save(actions_path, existing_actions, action_history[start_idx:])
 
-            start_idx = len(existing_crashes) if existing_crashes is not None else 0
-            existing_crashes = append_and_save(crashes_path, existing_crashes, crash_history[start_idx:])
+                start_idx = len(existing_crashes) if existing_crashes is not None else 0
+                existing_crashes = append_and_save(crashes_path, existing_crashes, crash_history[start_idx:])
 
-            start_idx = len(existing_epsilons) if existing_epsilons is not None else 0
-            existing_epsilons = append_and_save(epsilons_path, existing_epsilons, epsilon_history[start_idx:])
+                start_idx = len(existing_epsilons) if existing_epsilons is not None else 0
+                existing_epsilons = append_and_save(epsilons_path, existing_epsilons, epsilon_history[start_idx:])
 
-            # Reload arrays to reflect appended data
-            existing_rewards = np.load(rewards_path)
-            existing_actions = np.load(actions_path, allow_pickle=True)
-            existing_crashes = np.load(crashes_path, allow_pickle=True)
-            existing_epsilons = np.load(epsilons_path)
+                # Reload arrays to reflect appended data
+                existing_rewards = np.load(rewards_path)
+                existing_actions = np.load(actions_path, allow_pickle=True)
+                existing_crashes = np.load(crashes_path, allow_pickle=True)
+                existing_epsilons = np.load(epsilons_path)
 
-            print(f"  ✓ Saved: {model_path.name}")
+                print(f"  Saved: {model_path.name}")
 
-    print("\n✓ Training resume completed.")
-    env.destroy_node()
-    rclpy.shutdown()
+    except KeyboardInterrupt:
+        print("\n--- Training restore interrupted by user (CTRL-C) ---")
+        print("Saving full checkpoint and memory buffer before exiting...")
+        
+        interrupted_ep = episode if 'episode' in locals() else current_episode
+        model_path = resolved_checkpoint.parent / f"ddqn_ep{interrupted_ep:04d}_interrupted.pth"
+        
+        checkpoint = {
+            'model_state': agent.policy_net.state_dict(),
+            'optimizer_state': agent.optimizer.state_dict()
+        }
+        torch.save(checkpoint, model_path)
+        
+        memory_path = resolved_checkpoint.parent / f"ddqn_ep{interrupted_ep:04d}_interrupted_memory.pkl"
+        with open(memory_path, 'wb') as f:
+            pickle.dump(agent.memory, f)
+            
+        start_idx = len(existing_rewards) if existing_rewards is not None else 0
+        append_and_save(rewards_path, existing_rewards, reward_history[start_idx:])
+        start_idx = len(existing_actions) if existing_actions is not None else 0
+        append_and_save(actions_path, existing_actions, action_history[start_idx:])
+        start_idx = len(existing_crashes) if existing_crashes is not None else 0
+        append_and_save(crashes_path, existing_crashes, crash_history[start_idx:])
+        start_idx = len(existing_epsilons) if existing_epsilons is not None else 0
+        append_and_save(epsilons_path, existing_epsilons, epsilon_history[start_idx:])
+        
+        print(f"Interrupted checkpoint safely stored at: {model_path.name}")
+
+    finally:
+        print("\nTraining operation finished.")
+        env.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

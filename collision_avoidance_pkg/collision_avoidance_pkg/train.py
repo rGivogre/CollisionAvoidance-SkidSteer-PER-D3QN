@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import os
 import argparse
+import pickle
 from datetime import datetime
 from .gazebo_env import GazeboEnv
 from .agents.DDQN_agent import DDQNAgent
@@ -63,69 +64,109 @@ def main():
     epsilon_history = []
     print("--- Starting Skidbot Training (DDQN) ---")
 
-    for episode in range(1, MAX_EPISODES + 1):
-        # Reset the environment (Initialize state s1)
-        state, start_coords = env.reset()
-        start_history.append(start_coords)
-        episode_reward = 0
-        episode_actions = []  # Track actions taken this episode
+    try:
+        for episode in range(1, MAX_EPISODES + 1):
+            # Reset the environment (Initialize state s1)
+            state, start_coords = env.reset()
+            start_history.append(start_coords)
+            episode_reward = 0
+            episode_actions = []  # Track actions taken this episode
 
-        for step in range(MAX_STEPS_PER_EPISODE):
-            # Select an action using epsilon-greedy policy
-            action_idx = agent.get_action(state)
-            episode_actions.append(action_idx)  # Log action
+            for step in range(MAX_STEPS_PER_EPISODE):
+                # Select an action using epsilon-greedy policy
+                action_idx = agent.get_action(state)
+                episode_actions.append(action_idx)  # Log action
+                
+                # Execute action in Gazebo and observe next state and reward
+                next_state, reward, done, crash_coords = env.step(action_idx)
+                
+                # Store transition in memory
+                agent.store_transition(state, action_idx, reward, next_state, done)
+                
+                # Train the neural network (sample minibatch & update)
+                agent.train_step()
+                
+                state = next_state
+                episode_reward += reward
+                
+                if done:
+                    crash_history.append(crash_coords)  # Log crash coordinates
+                    break
             
-            # Execute action in Gazebo and observe next state and reward
-            next_state, reward, done, crash_coords = env.step(action_idx)
+            # Log episode reward and epsilon for plotting
+            reward_history.append(episode_reward)
+            epsilon_history.append(agent.epsilon)
             
-            # Store transition in memory
-            agent.store_transition(state, action_idx, reward, next_state, done)
-            
-            # Train the neural network (sample minibatch & update)
-            agent.train_step()
-            
-            state = next_state
-            episode_reward += reward
-            
-            if done:
-                crash_history.append(crash_coords)  # Log crash coordinates
-                break
+            # Pad episode actions if the robot crashed early so it fits cleanly into a matrix later
+            if len(episode_actions) < MAX_STEPS_PER_EPISODE:
+                episode_actions.extend([-1] * (MAX_STEPS_PER_EPISODE - len(episode_actions)))
+            action_history.append(episode_actions)
+
+            # Update epsilon (exploration) after every episode
+            agent.update_epsilon()
+
+            # Show progress 
+            formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
+            print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward:.2f}, Epsilon: {agent.epsilon:.3f}, Crash: {formatted_crash}")
+
+            # Save the model and log data
+            if (episode % SAVE_EVERY  == 0):
+                model_path = os.path.join(models_dir, f"ddqn_ep{episode:04d}.pth")
+                checkpoint = {
+                    'model_state': agent.policy_net.state_dict(),
+                    'optimizer_state': agent.optimizer.state_dict()
+                }
+                torch.save(checkpoint, model_path)
+                
+                # Save Replay Buffer
+                memory_path = os.path.join(models_dir, f"ddqn_ep{episode:04d}_memory.pkl")
+                with open(memory_path, 'wb') as f:
+                    pickle.dump(agent.memory, f)
+                
+                # Save data arrays for plot.py with standard names inside the timestamp folder
+                np.save(os.path.join(plot_data_dir, 'rewards.npy'), np.array(reward_history))
+                np.save(os.path.join(plot_data_dir, 'actions.npy'), np.array(action_history))
+                np.save(os.path.join(plot_data_dir, 'crashes.npy'), np.array(crash_history))
+                np.save(os.path.join(plot_data_dir, 'epsilons.npy'), np.array(epsilon_history))
+                
+                print(f"Model and logs saved at episode {episode}")
+                print(f"  -> Model: {os.path.abspath(model_path)}")
+                print(f"  -> Run Folder: {os.path.abspath(plot_data_dir)}")
+
+    except KeyboardInterrupt:
+        print("\n--- Training interrupted by user (CTRL-C) ---")
+        print("Saving full checkpoint and memory buffer before exiting...")
         
-        # Log episode reward and epsilon for plotting
-        reward_history.append(episode_reward)
-        epsilon_history.append(agent.epsilon)
+        # Determine current episode
+        interrupted_ep = episode if 'episode' in locals() else 0
         
-        # Pad episode actions if the robot crashed early so it fits cleanly into a matrix later
-        if len(episode_actions) < MAX_STEPS_PER_EPISODE:
-            episode_actions.extend([-1] * (MAX_STEPS_PER_EPISODE - len(episode_actions)))
-        action_history.append(episode_actions)
-
-        # Update epsilon (exploration) after every episode
-        agent.update_epsilon()
-
-        # Show progress 
-        formatted_crash = f"({crash_coords[0]:.2f}, {crash_coords[1]:.2f})" if done else 'No'
-        print(f"Episode: {episode}/{MAX_EPISODES}, Reward: {episode_reward:.2f}, Epsilon: {agent.epsilon:.3f}, Crash: {formatted_crash}")
-
-        # Save the model and log data
-        if (episode % SAVE_EVERY  == 0):
-            model_path = os.path.join(models_dir, f"ddqn_ep{episode:04d}.pth")
-            torch.save(agent.policy_net.state_dict(), model_path)
+        # Save model and optimizer
+        model_path = os.path.join(models_dir, f"ddqn_ep{interrupted_ep:04d}_interrupted.pth")
+        checkpoint = {
+            'model_state': agent.policy_net.state_dict(),
+            'optimizer_state': agent.optimizer.state_dict()
+        }
+        torch.save(checkpoint, model_path)
+        
+        # Save Replay Buffer
+        memory_path = os.path.join(models_dir, f"ddqn_ep{interrupted_ep:04d}_interrupted_memory.pkl")
+        with open(memory_path, 'wb') as f:
+            pickle.dump(agent.memory, f)
             
-            # Save data arrays for plot.py with standard names inside the timestamp folder
-            np.save(os.path.join(plot_data_dir, 'rewards.npy'), np.array(reward_history))
-            np.save(os.path.join(plot_data_dir, 'actions.npy'), np.array(action_history))
-            np.save(os.path.join(plot_data_dir, 'crashes.npy'), np.array(crash_history))
-            np.save(os.path.join(plot_data_dir, 'epsilons.npy'), np.array(epsilon_history))
-            
-            print(f"Model and logs saved at episode {episode}")
-            print(f"  -> Model: {os.path.abspath(model_path)}")
-            print(f"  -> Run Folder: {os.path.abspath(plot_data_dir)}")
+        # Save final history logs
+        np.save(os.path.join(plot_data_dir, 'rewards.npy'), np.array(reward_history))
+        np.save(os.path.join(plot_data_dir, 'actions.npy'), np.array(action_history))
+        np.save(os.path.join(plot_data_dir, 'crashes.npy'), np.array(crash_history))
+        np.save(os.path.join(plot_data_dir, 'epsilons.npy'), np.array(epsilon_history))
+        
+        print(f"Interrupted checkpoint safely stored at: {model_path}")
 
-    # Final cleanup
-    print("Training completed.")
-    env.destroy_node()
-    rclpy.shutdown()
+    finally:
+        # Final cleanup
+        print("Cleaning up and terminating nodes safely...")
+        env.destroy_node()
+        rclpy.shutdown()
+        print("Training session closed.")
 
 if __name__ == '__main__':
     main()
