@@ -11,6 +11,8 @@ import numpy as np
 import random
 import math
 import time
+import json
+import os
 
 # Environment Constants, revise them as needed for our specific Gazebo world and robot configuration
 ROBOT_NAME = 'skid_bot'             # Name of the entity in Gazebo
@@ -22,7 +24,7 @@ ANGULAR_SPEED_BASE = -0.8
 ANGULAR_SPEED_STEP = 0.16       
 
 class GazeboEnv(Node):
-    def __init__(self, linear_speed=0.3, lock_step=False):
+    def __init__(self, linear_speed=0.3, lock_step=False, map_name='map2'):
         super().__init__('gazebo_env_node', allow_undeclared_parameters=True, parameter_overrides=[Parameter('use_sim_time', Parameter.Type.BOOL, True)])
         # use_sim_time is crucial for synchronizing with Gazebo's clock, especially when running in fast mode during training. It ensures that all time-based operations (like waiting for sensor updates) are aligned with the simulation time rather than real-world time.
 
@@ -49,18 +51,9 @@ class GazeboEnv(Node):
         self.state = np.zeros(NUM_LIDAR_RAYS)
         self.collision = False
 
-        # Rectangular safe zones for spawn: (x_min, x_max, y_min, y_max)
-        self.safe_spawn_zones = [
-            (8.520232, 9.680581, 10.607340, 12.003513),
-            (8.352893, 9.725218, 2.331839, 3.795091),
-            (2.161592, 3.129258, 2.188802, 3.355060),
-            (-5.416000, -4.454008, -1.920677, -0.985938),
-            (-11.184471, -10.414239, -15.415749, -14.502028),
-            (-14.310157, -13.272814, -2.444438, -1.000931),
-            (-21.783125, -20.317483, 3.513993, 4.965386),
-            (-21.785237, -20.187068, 8.942143, 10.289129),
-            (-0.564794, -0.273878, 11.295714, 11.472330)
-        ]
+        self.map_name = map_name
+        self.safe_spawn_zones = []
+        self._load_spawn_zones()
         
         # Initialize coordinate tracking variables
         self.start_coords = (0.0, 0.0)
@@ -72,6 +65,28 @@ class GazeboEnv(Node):
 
         self.new_scan_received = False
     
+    def _load_spawn_zones(self):
+        """Loads spawn zones from config/spawn_zones.json based on the map_name."""
+        # Find path to the workspace relative config relative to current working directory
+        config_path = os.path.join(os.getcwd(), 'config', 'spawn_zones.json')
+        
+        try:
+            with open(config_path, 'r') as f:
+                all_zones = json.load(f)
+                
+            if self.map_name in all_zones:
+                self.safe_spawn_zones = all_zones[self.map_name]
+                self.get_logger().info(f"Loaded {len(self.safe_spawn_zones)} spawn zones for map '{self.map_name}'.")
+            else:
+                self.get_logger().warn(f"Map '{self.map_name}' not found in {config_path}. Falling back to default (0,0).")
+                self.safe_spawn_zones = [[0.0, 0.0, 0.0, 0.0]]
+        except FileNotFoundError:
+            self.get_logger().error(f"Config file not found at {config_path}. Falling back to default (0,0).")
+            self.safe_spawn_zones = [[0.0, 0.0, 0.0, 0.0]]
+        except Exception as e:
+            self.get_logger().error(f"Failed to load spawn zones: {e}. Falling back to default (0,0).")
+            self.safe_spawn_zones = [[0.0, 0.0, 0.0, 0.0]]
+
     def scan_callback(self, msg):
         """Processes LiDAR data every time it arrives and evaluates collision status."""
         # Convert measurements to a numpy array
@@ -136,83 +151,36 @@ class GazeboEnv(Node):
     def _unpause_physics(self):
         """Unfreezes the Gazebo physics engine."""
         self.unpause_client.call_async(Empty.Request())
-    
-    def _compute_reward_lane_centrality(self, normalized_state):
-        """
-        Reward function optimizing for lane centrality.
-        The robot is rewarded for:
-        - Staying centered (equal distance on left/right)
-        - Keeping front clear
-        - Maintaining safe clearance overall
-        
-        Args:
-            normalized_state: LiDAR state normalized to [0, 1]
-        
-        Returns:
-            reward: scalar float
-        """
-        # Extract zones: right (0-18), front (19-30), left (31-49)
-        right_rays = normalized_state[:19]
+
+    def _compute_reward(self, normalized_state, action):
+
         front_rays = normalized_state[19:31]
-        left_rays = normalized_state[31:]
         
-        # Compute zone statistics
-        right_mean = np.mean(right_rays)
-        front_mean = np.mean(front_rays)
-        left_mean = np.mean(left_rays)
+        # Calculate key metrics
+        front_clearance_mean = float(np.mean(front_rays))
+        min_clearance = float(np.min(normalized_state))
+        omega = ANGULAR_SPEED_BASE + (ANGULAR_SPEED_STEP * action)
+
+        r_base = 0.1    # Base Survival (Small incentive to keep the episode running)
         
-        # 1. Base survival reward (small)
-        base_reward = 0.1
+        # Rewards the robot proportionally to how clear the path ahead is.
+        r_forward = 3.0 * front_clearance_mean  # Max value: 3.0 (if completely clear, remember the state is normalized to [0,1])
         
-        # 2. Lane centrality: reward symmetric left/right clearance
-        # Compare left vs right: lower difference = more centered
-        lr_diff = np.abs(left_mean - right_mean)  # 0 is perfect center, 1 is max asymmetry
-        centrality_reward = 0.5 * (1.0 - lr_diff)  # ranges from 0.5 (centered) to -0.5 (highly asymmetric)
+        # Penalizes rotation ONLY when the path ahead is clear. Skid-steer kinematics degrade performance when turning unnecessarily.
+        r_steer = 1.5 * abs(omega) * front_clearance_mean   # If front is blocked (front_clearance_mean almost 0), turning is free.
         
-        # 3. Front clearance bonus (front rays should be clear)
-        front_bonus = 0.3 * front_mean
-        
-        # 4. Overall safety: penalize if any zone is dangerously close
-        min_clearance = np.min(normalized_state)
-        if min_clearance < 0.15:  # Approaching collision threshold
-            safety_penalty = -0.5
-        elif min_clearance < 0.25:
-            safety_penalty = -0.2
+        # Applies a linear penalty only when closer than a critical threshold.
+        normalized_crash_threshold = FRONT_COLLISION_THRESHOLD / MAX_LIDAR_RANGE
+        safe_margin = normalized_crash_threshold + 0.1      # safety boundary starts 1 meter (0.1 normalized) before the actual crash point
+        if min_clearance < safe_margin:
+            r_danger = 2.0 * ((safe_margin - min_clearance) / (safe_margin - normalized_crash_threshold))  # Linearly increases from 0 (at safe_margin) to 2.0 (at crash threshold)
+            r_danger = min(r_danger, 2.0)  # Cap the danger penalty at 2.0 (handles side collisions that can be much closer than the front threshold)
         else:
-            safety_penalty = 0.0
-        
-        # Combine components
-        reward = base_reward + centrality_reward + front_bonus + safety_penalty
-        
-        return reward
-    
-    def _compute_reward_simple_clearance(self, normalized_state):
-        """
-        Simple reward based purely on average clearance.
-        Useful as baseline for comparison.
-        
-        Args:
-            normalized_state: LiDAR state normalized to [0, 1]
-        
-        Returns:
-            reward: scalar float
-        """
-        mean_clearance = np.mean(normalized_state)
-        min_clearance = np.min(normalized_state)
-        
-        base_reward = 0.1
-        clearance_reward = 0.5 * mean_clearance
-        
-        if min_clearance < 0.15:
-            safety_penalty = -0.5
-        elif min_clearance < 0.25:
-            safety_penalty = -0.2
-        else:
-            safety_penalty = 0.0
-        
-        reward = base_reward + clearance_reward + safety_penalty
-        
-        return reward
+            r_danger = 0.0
+            
+        reward = r_base + r_forward - r_steer - r_danger
+        return float(reward)
+
 
     def step(self, action):
         """Receives the action (0-10), moves the robot and calculates the reward."""
@@ -234,14 +202,13 @@ class GazeboEnv(Node):
         if self.lock_step:
             self._pause_physics()   # This gives PyTorch unlimited real-world time to compute gradients safely.
 
-        # Calculate the reward using the selected reward function
+        # Calculate the reward
         if self.collision:
-            reward = -30.0  # Moderate penalty for collision (not extreme like -1000)
+            reward = -20.0  # Mitigated collision penalty, to prevent gradient explosions in Huber Loss
             done = True
             crash_coords = (self.current_x, self.current_y)
         else:
-            # Use lane centrality reward (can be swapped to simple_clearance for testing)
-            reward = self._compute_reward_lane_centrality(self.state)
+            reward = self._compute_reward(self.state, action)
             done = False
             crash_coords = None
             
