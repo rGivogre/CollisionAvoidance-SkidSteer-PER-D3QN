@@ -200,7 +200,7 @@ class GazeboEnv(Node):
         self.cmd_vel_pub.publish(vel_cmd)
         self._drain_lidar_queue()   # QUEUE DRAIN: Flush old frames generated before the command had a physical effect
         
-        self._wait_for_new_scan(required_scans=2)   # Wait for two new scans to ensure the robot has moved enough to reflect the action's consequences in the LiDAR data.
+        self._wait_for_new_scan(required_scans=3)   # Wait for three new scans to ensure the robot has moved enough to reflect the action's consequences in the LiDAR data.
     
         # Freeze the gazebo universe exactly when we get our observation
         if self.lock_step:

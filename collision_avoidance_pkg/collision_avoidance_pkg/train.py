@@ -11,7 +11,7 @@ from .agents.DDQN_agent import DDQNAgent
 
 # Training parameters (from the paper)
 MAX_EPISODES = 3000
-MAX_STEPS_PER_EPISODE = 3000
+MAX_STEPS_PER_EPISODE = 1100    # With each step lasting 0.3s (because we wait for 3 new scans after each action), this allows for a max episode duration of around 5.5 minutes.
 SAVE_EVERY = 250  # Save the model every x episodes
 
 def main():
