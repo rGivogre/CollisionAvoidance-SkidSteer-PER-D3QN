@@ -67,25 +67,29 @@ class GazeboEnv(Node):
     
     def _load_spawn_zones(self):
         """Loads spawn zones from config/spawn_zones.json based on the map_name."""
-        # Find path to the workspace relative config relative to current working directory
         config_path = os.path.join(os.getcwd(), 'config', 'spawn_zones.json')
-        
-        try:
-            with open(config_path, 'r') as f:
-                all_zones = json.load(f)
-                
-            if self.map_name in all_zones:
-                self.safe_spawn_zones = all_zones[self.map_name]
-                self.get_logger().info(f"Loaded {len(self.safe_spawn_zones)} spawn zones for map '{self.map_name}'.")
-            else:
-                self.get_logger().warn(f"Map '{self.map_name}' not found in {config_path}. Falling back to default (0,0).")
-                self.safe_spawn_zones = [[0.0, 0.0, 0.0, 0.0]]
-        except FileNotFoundError:
-            self.get_logger().error(f"Config file not found at {config_path}. Falling back to default (0,0).")
-            self.safe_spawn_zones = [[0.0, 0.0, 0.0, 0.0]]
-        except Exception as e:
-            self.get_logger().error(f"Failed to load spawn zones: {e}. Falling back to default (0,0).")
-            self.safe_spawn_zones = [[0.0, 0.0, 0.0, 0.0]]
+
+        if not os.path.exists(config_path):
+            error_msg = f"Spawn zone config file not found: {config_path}"
+            self.get_logger().error(error_msg)
+            raise RuntimeError(error_msg)
+
+        with open(config_path, 'r') as f:
+            all_zones = json.load(f)
+
+        if self.map_name not in all_zones:
+            error_msg = f"Spawn zones for map '{self.map_name}' not found in {config_path}."
+            self.get_logger().error(error_msg)
+            raise RuntimeError(error_msg)
+
+        zones = all_zones[self.map_name]
+        if not isinstance(zones, list) or len(zones) == 0:
+            error_msg = f"Spawn zones for map '{self.map_name}' are empty or invalid in {config_path}."
+            self.get_logger().error(error_msg)
+            raise RuntimeError(error_msg)
+
+        self.safe_spawn_zones = zones
+        self.get_logger().info(f"Loaded {len(self.safe_spawn_zones)} spawn zones for map '{self.map_name}'.")
 
     def scan_callback(self, msg):
         """Processes LiDAR data every time it arrives and evaluates collision status."""
