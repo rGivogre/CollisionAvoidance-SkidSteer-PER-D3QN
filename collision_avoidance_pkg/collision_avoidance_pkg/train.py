@@ -133,7 +133,9 @@ def main():
                 print(f"  -> Model: {os.path.abspath(model_path)}")
                 print(f"  -> Run Folder: {os.path.abspath(plot_data_dir)}")
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, RuntimeError) as e:
+        if isinstance(e, RuntimeError) and "Unable to convert call argument" not in str(e):
+            raise e
         print("\n--- Training interrupted by user (CTRL-C) ---")
         print("Saving full checkpoint and memory buffer before exiting...")
         
@@ -165,7 +167,8 @@ def main():
         # Final cleanup
         print("Cleaning up and terminating nodes safely...")
         env.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
         print("Training session closed.")
 
 if __name__ == '__main__':

@@ -296,7 +296,10 @@ def main():
 
                 print(f"  Saved: {model_path.name}")
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, RuntimeError) as e:
+        if isinstance(e, RuntimeError) and "Unable to convert call argument" not in str(e):
+            raise e
+            
         print("\n--- Training restore interrupted by user (CTRL-C) ---")
         print("Saving full checkpoint and memory buffer before exiting...")
         
@@ -327,7 +330,8 @@ def main():
     finally:
         print("\nTraining operation finished.")
         env.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
