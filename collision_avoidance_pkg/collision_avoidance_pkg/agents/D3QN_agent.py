@@ -114,12 +114,13 @@ class DuelingDDQNAgent:
         # Calculate target Q-values 
         expected_Q = rewards + (GAMMA * next_Q * (1 - dones))
 
-        # Calculate Loss (Mean Squared Error)
-        loss = nn.MSELoss()(expected_Q.detach(), curr_Q)
+        # Calculate Loss using Huber (Smooth L1) for stable learning
+        loss = nn.SmoothL1Loss()(expected_Q.detach(), curr_Q)
 
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
         self.step_count += 1
@@ -131,3 +132,5 @@ class DuelingDDQNAgent:
     def update_epsilon(self):
         if self.epsilon > MIN_EPSILON:
             self.epsilon *= DECAY_RATE_BETA
+            if self.epsilon < MIN_EPSILON:
+                self.epsilon = MIN_EPSILON
