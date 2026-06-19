@@ -28,9 +28,11 @@ setup(
             # command name = packageName.module:function
             'random_agent = collision_avoidance_pkg.random_agent:main',
             'train_ddqn = collision_avoidance_pkg.train:main',
+            'train_per_ddqn = collision_avoidance_pkg.train_per_ddqn:main',
             'test = collision_avoidance_pkg.test:main',
             'action_tester = collision_avoidance_pkg.tester:main',
             'restore_training = collision_avoidance_pkg.restore_training:main',
+            'restore_per_ddqn = collision_avoidance_pkg.restore_per_training:main',
         ],
     },
 )
