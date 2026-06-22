@@ -1,0 +1,13 @@
+{
+  "run_name": "per_d3qn_20260619_100203",
+  "start_time": "20260619_100203",
+  "agent_key": "PER_D3QN",
+  "speed": 0.3,
+  "learning_rate": 0.00025,
+  "max_episodes": 2000,
+  "max_steps_per_episode": 1100,
+  "save_every": 250,
+  "models_dir": "models/per_d3qn_20260619_100203",
+  "plot_data_dir": "plot_data/per_d3qn_20260619_100203",
+  "checkpoint_template": "per_d3qn_ep{episode:04d}.pth"
+}

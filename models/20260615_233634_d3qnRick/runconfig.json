@@ -1,0 +1,12 @@
+{
+  "run_name": "20260615_233634",
+  "start_time": "20260615_233634",
+  "agent_key": "D3QN",
+  "speed": 0.3,
+  "learning_rate": 0.00025,
+  "max_steps_per_episode": 1100,
+  "save_every": 250,
+  "models_dir": "models/20260615_233634",
+  "plot_data_dir": "plot_data/20260615_233634",
+  "checkpoint_template": "d3qn_ep{episode:04d}.pth"
+}
