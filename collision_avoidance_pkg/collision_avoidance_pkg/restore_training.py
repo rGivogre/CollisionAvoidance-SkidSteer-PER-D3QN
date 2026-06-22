@@ -3,7 +3,6 @@ import json
 import re
 import pickle
 from pathlib import Path
-
 import numpy as np
 import torch
 import rclpy
@@ -100,11 +99,11 @@ def main():
     parser.add_argument('--model_path', type=str, default='',
                         help='Path to a .pth checkpoint or directory containing checkpoints. '
                              'If omitted, uses the most recent checkpoint from models/')
-    parser.add_argument('--speed', type=float, default=None,
+    parser.add_argument('--speed', type=float, default=0.3,
                         help='Override linear velocity (from runconfig if omitted)')
-    parser.add_argument('--learning_rate', type=float, default=None,
+    parser.add_argument('--learning_rate', type=float, default=2.5e-4,
                         help='Override learning rate (from runconfig if omitted)')
-    parser.add_argument('--max_steps', type=int, default=None,
+    parser.add_argument('--max_steps', type=int, default=1100,
                         help='Override max steps per episode (from runconfig if omitted)')
     parser.add_argument('--target_episodes', type=int, default=MAX_EPISODES,
                         help='Episode count to resume training until')
@@ -191,7 +190,7 @@ def main():
 
     # Initialize ROS and environment
     rclpy.init()
-    env = GazeboEnv(linear_speed=speed, lock_step=True)
+    env = GazeboEnv(linear_speed=speed, lock_step=True, map_name="map2")    # or map_name=run_config.get('map_name', 'multi_map')
     agent = DDQNAgent(learning_rate=learning_rate)
 
     # Load checkpoint

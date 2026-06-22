@@ -1,0 +1,12 @@
+{
+  "run_name": "20260529_004042",
+  "start_time": "20260529_004042",
+  "agent_key": "DDQN",
+  "speed": 0.35,
+  "learning_rate": 0.0005,
+  "max_steps_per_episode": 1100,
+  "save_every": 250,
+  "models_dir": "models/20260529_004042_v0.35_lr0.0005_36hRun",
+  "plot_data_dir": "plot_data/20260529_004042_v0.35_lr0.0005_36hRun",
+  "checkpoint_template": "ddqn_ep{episode:04d}_maxstep3000.pth"
+}
