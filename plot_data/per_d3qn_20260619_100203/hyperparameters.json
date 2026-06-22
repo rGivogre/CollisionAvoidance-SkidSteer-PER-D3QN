@@ -1,0 +1,6 @@
+{
+    "max_episodes": 2000,
+    "max_steps_per_episode": 1100,
+    "learning_rate": 0.00025,
+    "linear_speed": 0.3
+}
