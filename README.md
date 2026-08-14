@@ -1,131 +1,128 @@
-# Collision Avoidance RL
+<div align="center">
+  <h1>Deep Reinforcement Learning for Collision Avoidance</h1>
+  <h3>Autonomous Navigation in Skid-Steering Mobile Robots</h3>
+</div>
 
-This ROS 2 package provides a Deep Reinforcement Learning environment for a custom Skid-Steer robot collision avoidance using Gazebo.
+<p align="center">
+  <img src="images/test_hardmap.gif" alt="Robot Navigating Hard Map" width="600"/>
+</p>
+
+This repository contains the codebase and implementation details for training and evaluating Deep Reinforcement Learning (DRL) agents on a custom Skid-Steer robot in a Gazebo simulation environment. 
+
+The project overcomes the limitations of standard DDQN baselines by introducing **Active Reward Shaping**, a **Dueling DDQN architecture with Prioritized Experience Replay (PER-D3QN)**, and an **Event-Driven Lock-Step Execution** pipeline in ROS 2.
 
 ## Prerequisites
 
-### 1. Python Dependencies
-Install `pip` and the required Python packages using the provided `requirements.txt` file. This handles PyTorch, NumPy, and plotting libraries:
+- **ROS 2** (Humble) and **Gazebo** (Classic 11) installed.
+- **Python 3.10** or higher.
+- Install dependencies from `requirements.txt`:
+  ```bash
+  sudo apt update && sudo apt install python3-pip
+  pip install -r requirements.txt
+  ```
 
-```bash
-sudo apt update
-sudo apt install python3-pip
-cd ~/ros_project_ws/src/CollisionAvoidance-RL
-pip install -r requirements.txt
-```
+### Skid-Steer Robot Package
 
-
-
-### 2. Skid-Steer Robot Package
-This environment relies on a custom Skid-Steer robot model. You need to clone its repository into your workspace's `src` folder (right next to the `CollisionAvoidance-RL` folder):
+This environment relies on a custom Skid-Steer robot model. You need to clone its repository into your workspace's `src` folder (next to this repository):
 
 ```bash
 cd ~/ros_project_ws/src
 git clone https://github.com/odobot/ROS2-SKID-STEER-DRIVE-ROBOT.git
 ```
 
-### 3. Adding the LiDAR Sensor
-The original skid-steer repository does not include the LiDAR setup we need for this environment. The repository provides updated `xacro` files—`skid.xacro` and `gazebo_control.xacro`—that add the sensor and tune the robot mass, wheel properties, and friction settings for Gazebo.
-
-After cloning the robot repository, replace the original robot description files with the versions from this repository so the simulation uses the correct model, sensor configuration, and Gazebo drive plugin settings.
-
-*(After this change, rebuild the workspace and open a new terminal to source it.)*
+*Note: Replace the original robot description `xacro` files in the cloned repo with the versions provided in this repository (`xacro/skid.xacro` and `xacro/gazebo_control.xacro`) to include the LiDAR sensor and optimal physical properties. Then rebuild the workspace.*
 
 ## Building the Workspace
 
-To build the package, navigate to the root of your ROS 2 workspace (e.g., `~/ros_project_ws`). 
-For active development, always use the `--symlink-install` flag. This flag creates symbolic links to your Python scripts, launch files, and worlds instead of mechanically copying them. As a result, you won't need to rebuild the workspace every time you edit an existing file—your changes will take effect immediately upon saving!
-
-If you previously built without this flag or encounter caching issues, clean the workspace first:
+To build the package, navigate to the root of your ROS 2 workspace:
 
 ```bash
 cd ~/ros_project_ws
-rm -rf build/ install/ log/
 colcon build --symlink-install
+source install/setup.bash
 ```
+
+## Technologies and Libraries
+
+- **Languages:** Python 3
+- **Deep Learning / RL:** PyTorch
+- **Robotics Framework:** ROS 2
+- **Simulation:** Gazebo 11
+- **Data Processing & Visualization:** NumPy, Pandas, Matplotlib
+
+## Training the Agents
+
+<p align="center">
+  <!-- Place the Multi-map image here to show where the agent trains -->
+  <img src="images/mappa_gz_multi.png" alt="Gazebo Multi-Map Training Environment" width="500"/>
+</p>
+
+
+### Terminal 1: Start the Simulation
+Launch the Gazebo environment. We engineered an event-driven lock-step execution pipeline to maximize the simulation's Real Time Factor (RTF).
 
 ```bash
-cd ~/ros_project
-rm -rf build/ install/ log/
-colcon build --symlink-install
+ros2 launch collision_avoidance_pkg sim_environment.launch.py gui:=false world_file:=multi_maps.world speedup:=true
 ```
+**Launch Arguments:**
+- `gui` *(default: false)*: Set to `true` to open the Gazebo GUI. Keep `false` for headless, high-speed training.
+- `world_file` *(default: multi_maps.world)*: The map to load from the `worlds/` folder.
+- `speedup` *(default: true)*: Runs physics as fast as possible for training. Set to `false` for 1x Real-Time Factor.
 
-*(Note: You must still re-run `colcon build --symlink-install` if you create brand new files or modify `setup.py` / `package.xml`).*
+### Terminal 2: Run the Agent
+Wait for Gazebo to fully load, then run one of the following training scripts. 
 
-## How to Run
+**Arguments Available:**
+- `--speed` *(default: 0.3)*: Linear velocity for the robot.
+- `--learning_rate` *(default: 0.00025)*: Learning rate for the neural network.
 
-To run the simulation and the agent, you need to open **two different terminals**.
+1. **Standard DDQN**: Vanilla Double DQN agent.
+   ```bash
+   ros2 run collision_avoidance_pkg train_ddqn --speed 0.3 --learning_rate 0.00025
+   ```
+2. **Dueling DDQN (D3QN)**: D3QN agent with separated Value and Advantage streams.
+   ```bash
+   ros2 run collision_avoidance_pkg train_d3qn --speed 0.3
+   ```
+3. **PER-D3QN**: Dueling DDQN enhanced with Prioritized Experience Replay for optimal sampling.
+   ```bash
+   ros2 run collision_avoidance_pkg train_pd3qn --speed 0.3
+   ```
+4. **PER-DDQN**: Standard DDQN with Prioritized Experience Replay.
+   ```bash
+   ros2 run collision_avoidance_pkg train_per_ddqn --speed 0.3
+   ```
 
-### Terminal 1 (Start the Simulation):
-From this terminal, you launch Gazebo. You can customize the simulation using **launch arguments**.
+*During training, checkpoints (`.pth`) and performance logs are automatically saved in the `models/` and `plot_data/` directories.*
+
+## Testing the Agents
+
+The `test.py` script evaluates trained agents in the environment, proving their robustness across different topologies.
 
 ```bash
-ros2 launch collision_avoidance_pkg sim_environment.launch.py
+ros2 run collision_avoidance_pkg test --model_path "" --speed 0.3 --episodes 20 --lock_step false
 ```
+**Test Arguments:**
+- `model_path`: Path to a specific `.pth` file or directory. If left empty `""`, it auto-resolves to the newest model.
+- `speed` *(default: 0.3)*: Linear velocity.
+- `episodes` *(default: 30)*: Number of evaluation episodes.
+- `max_steps` *(default: 1100)*: Max steps before timeout.
+- `lock_step` *(default: true)*: Set to `false` for smooth real-time visual evaluation.
 
-**Launch Arguments Available:**
-- `gui` *(default: `false`)*: Set this to `true` to open the Gazebo graphical interface. Keeping it `false` (headless mode) is optimal for high-speed RL training because it doesn't waste GPU resources rendering graphics.
-- `world_file` *(default: `multi_maps.world`)*: The name of the world file to load from the package's `worlds/` folder.
-- `speedup` *(default: `true`)*: Set to `true` to run physics as fast as possible (unlimited RTF) for training. Set to `false` to limit the simulation to 1x Real-Time Factor (ideal when `gui` is `true` for visual testing).
+## Evaluating Training Performance
 
-*Example with custom arguments:*
-```bash
-ros2 launch collision_avoidance_pkg sim_environment.launch.py gui:=true world_file:=map2.world
-```
-
-### Terminal 2 (Run the Agent):
-Wait for Gazebo to fully load the physics server in the first terminal, then run one of the following commands depending on your goal.
-
-**1. Random Agent (Baseline)**
-Start an agent that picks random actions to test the environment physics:
-```bash
-ros2 run collision_avoidance_pkg random_agent
-```
-
-**2. Train DDQN Agent**
-Start training a new Deep Double Q-Network model. 
-```bash
-ros2 run collision_avoidance_pkg train_ddqn --speed 0.3 --learning_rate 0.00025
-```
-*Note: This script uses `argparse`, so the command passes standard Python arguments directly to the executable.*
-
-**3. Test a Trained Model**
-Evaluate a pre-trained model checkpoint in the environment (visually smooth, without lock-step by default).
-```bash
-ros2 run collision_avoidance_pkg test --model_path "" --speed 0.3 --episodes 5 --lock_step false
-```
-**Test Arguments Available:**
-- `model_path`: Path to a specific `.pth` file, or a directory. If left empty `""`, it automatically auto-resolves to the newest model in the `models/` directory.
-- `speed` *(default: 0.3)*: Linear velocity for the robot.
-- `episodes` *(default: 5)*: How many episodes to run before exiting.
-- `max_steps` *(default: 30000)*: Maximum number of steps per episode.
-- `lock_step` *(default: false)*: Set to `true` to freeze physics at every step (like during training), or `false` for smooth real-time visual evaluation.
-
-```bash
-ros2 run collision_avoidance_pkg test
-```
-
-### Generic terminal
-Before running a new test or training, to kill the background processes
-```bash
-killall -9 gzserver gzclient
-```
-
-## Data Visualization (Plots)
-
-During training, the agent's performance (rewards, actions, epsilon decay, and crash logs) is automatically saved in timestamped folders inside `plot_data/`. 
-
-To visualize the results and generate graphs, you can run the `plots.py` script from the root of the repository:
+To visualize the results and generate graphs:
 
 ```bash
 cd ~/ros_project_ws/src/CollisionAvoidance-RL
 python3 collision_avoidance_pkg/collision_avoidance_pkg/plots.py
 ```
-By default, the script will automatically find and plot the **most recent training run**.
 
-If you want to view a specific historical run, pass the timestamp folder name using the `--run` argument:
-```bash
-python3 collision_avoidance_pkg/collision_avoidance_pkg/plots.py --run 20260528_011240
-```
+## Key Results
 
-*(Note: To render the crash site distribution correctly, make sure you have a top-down screenshot of your environment saved as `images/map_screenshot.png` in the repository).*
+Our investigation successfully transitioned a baseline DDQN to a robust **PER-D3QN** agent, answering several key engineering questions:
+
+- **Active Reward Shaping**: Replacing a passive survival reward with active forward clearance incentives prevented the agent from spinning in place, promoting proactive obstacle avoidance.
+- **Dueling Architecture Benefits**: D3QN separates state value from action advantage. This helped the agent realize that open corridors are inherently safe, yielding smoother trajectories and the highest peak rewards.
+- **Sampling Efficiency**: Prioritized Experience Replay (PER) forced the network to learn from critical crash sites rather than redundant safe states. **The combined PER-D3QN yielded the most reliable, low-variance policy during testing on unseen maps.**
+- **Simulation Optimization**: We decoupled the PyTorch backend from the Gazebo physics engine clock through lock-step execution.
