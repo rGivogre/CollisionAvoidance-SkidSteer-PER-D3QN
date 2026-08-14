@@ -7,7 +7,7 @@ import argparse
 import pickle
 from datetime import datetime
 from .gazebo_env import GazeboEnv
-from .agents.PER_D3QN_agent import PERD3QNAgent  # Modificato l'import dell'agente
+from .agents.PER_D3QN_agent import PERD3QNAgent
 
 # Training parameters (from the paper)
 MAX_EPISODES = 3000

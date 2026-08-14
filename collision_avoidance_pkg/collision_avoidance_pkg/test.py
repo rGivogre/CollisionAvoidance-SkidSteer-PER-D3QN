@@ -57,10 +57,10 @@ def main():
     parser = argparse.ArgumentParser(description="Skidbot Universal Testing Node")
     parser.add_argument('--model_path', type=str, default='', help='Path to the .pth model or directory')
     parser.add_argument('--speed', type=float, default=0.3, help='Linear velocity for the robot')
-    parser.add_argument('--map_name', type=str, default='map2', help='Map name used to select spawn zones')
+    parser.add_argument('--map_name', type=str, default='hardTest', help='Map name used to select spawn zones')
     parser.add_argument('--episodes', type=int, default=30, help='Number of test episodes for statistical significance')
     parser.add_argument('--max_steps', type=int, default=MAX_STEPS_PER_EPISODE, help='Max steps per episode')
-    parser.add_argument('--lock_step', type=bool, default=False, help='Enable physics lock-step during inference')
+    parser.add_argument('--lock_step', type=bool, default=True, help='Enable physics lock-step during inference')
     
     args, _ = parser.parse_known_args()
     
