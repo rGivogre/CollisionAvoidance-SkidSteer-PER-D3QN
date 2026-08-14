@@ -3,9 +3,11 @@
   <h3>Autonomous Navigation in Skid-Steering Mobile Robots</h3>
 </div>
 
-<p align="center">
-  <img src="images/test_hardmap.gif" alt="Robot Navigating Hard Map" width="600"/>
-</p>
+
+
+https://github.com/user-attachments/assets/eb778650-6ac1-472a-8410-92e39de57616
+
+
 
 This repository contains the codebase and implementation details for training and evaluating Deep Reinforcement Learning (DRL) agents on a custom Skid-Steer robot in a Gazebo simulation environment. 
 
