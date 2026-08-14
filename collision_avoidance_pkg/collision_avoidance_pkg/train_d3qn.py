@@ -25,7 +25,7 @@ def main():
 
     # Initialize ROS 2 system, environment node, and the D3QN agent
     rclpy.init()
-    env = GazeboEnv(linear_speed=speed, lock_step=True)
+    env = GazeboEnv(linear_speed=speed, lock_step=True, map_name='multi_maps')
     agent = DuelingDDQNAgent()
     
     # Setup project directories for saving models and plot data (assuming execution from repo root)

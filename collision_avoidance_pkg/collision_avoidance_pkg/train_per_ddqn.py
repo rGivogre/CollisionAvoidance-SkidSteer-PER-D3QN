@@ -23,7 +23,7 @@ def main():
     lr = args.learning_rate
 
     rclpy.init()
-    env = GazeboEnv(linear_speed=speed, lock_step=True)
+    env = GazeboEnv(linear_speed=speed, lock_step=True, map_name='multi_maps')
     agent = PERDDQNAgent(learning_rate=lr)
     
     models_base_dir = 'models'

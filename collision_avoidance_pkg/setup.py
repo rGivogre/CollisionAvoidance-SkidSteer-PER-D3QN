@@ -26,7 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             # command name = packageName.module:function
-            'random_agent = collision_avoidance_pkg.random_agent:main',
+            'random_agent = collision_avoidance_pkg.agents.random_agent:main',
             'train_ddqn = collision_avoidance_pkg.train:main',
             'train_d3qn = collision_avoidance_pkg.train_d3qn:main',
             'train_pd3qn = collision_avoidance_pkg.train_pd3qn:main',

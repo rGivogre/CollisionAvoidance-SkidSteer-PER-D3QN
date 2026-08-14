@@ -8,7 +8,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     # Initialize our environment
-    env = GazeboEnv()
+    env = GazeboEnv(map_name='multi_maps')
     
     print("Starting Random Agent test! Press CTRL+C to stop.")
     time.sleep(2) # Wait 2 seconds for Gazebo to stabilize
@@ -16,7 +16,7 @@ def main(args=None):
     try:
         epochs = 5 # Let's test 5 episodes
         for epoch in range(1, epochs + 1):
-            state = env.reset() # Start of the episode
+            state, start_coords = env.reset() # Start of the episode
             done = False
             total_reward = 0
             
@@ -26,7 +26,7 @@ def main(args=None):
                 action = random.randint(0, 10)
 
                 # Execute the step in the environment
-                state, reward, done = env.step(action)
+                state, reward, done, crash_coords = env.step(action)
                 total_reward += reward
                 print(f"Action: {action} | Reward: {reward} | State[0]: {state[0]:.2f}m")
                 

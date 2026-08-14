@@ -25,7 +25,7 @@ def main():
 
     # Initialize ROS 2 system, environment node, and the PER-D3QN agent
     rclpy.init()
-    env = GazeboEnv(linear_speed=speed, lock_step=True)
+    env = GazeboEnv(linear_speed=speed, lock_step=True, map_name='multi_maps')
     agent = PERD3QNAgent(learning_rate=lr) # Istanza modificata in PERD3QNAgent
     
     # Setup project directories for saving models and plot data (assuming execution from repo root)
@@ -62,7 +62,7 @@ def main():
     
     try:
         for episode in range(1, MAX_EPISODES + 1):
-            state = env.reset()
+            state, start_coords = env.reset()
             episode_reward = 0
             episode_actions = []
             
